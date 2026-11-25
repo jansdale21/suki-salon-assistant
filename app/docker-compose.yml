@@ -1,0 +1,73 @@
+# Suki runtime stack (one EC2 instance). Started by infra/scripts/deploy.sh.
+# Secrets are NOT in this file: deploy.sh writes ./.env (chmod 600, git-ignored) from
+# SSM Parameter Store, and the gateway reads the Gemini key from Parameter Store itself.
+name: suki
+
+x-awslogs: &awslogs
+  driver: awslogs
+  options: &awslogs-opts
+    awslogs-region: ${AWS_REGION}
+    mode: non-blocking
+    max-buffer-size: 4m
+
+services:
+  nginx:
+    image: docker.io/library/nginx:1.27-alpine
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./branding:/branding:ro
+    depends_on: [api]
+    logging:
+      <<: *awslogs
+      options: { <<: *awslogs-opts, awslogs-group: /suki/nginx, tag: "{{.Name}}" }
+
+  api:
+    image: ${LIBRECHAT_IMAGE}
+    restart: always
+    env_file: .env
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3080
+      - MONGO_URI=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/LibreChat?authSource=admin
+      - CONFIG_PATH=/app/librechat.yaml
+    volumes:
+      - ./librechat.yaml:/app/librechat.yaml:ro
+      - ./data/uploads:/app/uploads
+      - ./data/images:/app/client/public/images
+    depends_on: [mongodb, gateway]
+    logging:
+      <<: *awslogs
+      options: { <<: *awslogs-opts, awslogs-group: /suki/app, tag: "{{.Name}}" }
+
+  mongodb:
+    image: docker.io/library/mongo:8.0.20
+    restart: always
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USER}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD}
+    volumes:
+      - ./data/mongo:/data/db
+    # not published to the host: only reachable on the internal Docker network
+    logging:
+      <<: *awslogs
+      options: { <<: *awslogs-opts, awslogs-group: /suki/mongodb, tag: "{{.Name}}" }
+
+  gateway:
+    image: suki-gateway:${APP_VERSION:-dev}   # built on the instance by deploy.sh
+    pull_policy: never
+    restart: always
+    environment:
+      - AWS_REGION=${AWS_REGION}
+      - PARAM_PREFIX=${PARAM_PREFIX}
+      - KNOWLEDGE_SOURCE=${KNOWLEDGE_SOURCE}
+      - APP_VERSION=${APP_VERSION:-dev}
+    ports:
+      - "127.0.0.1:8080:8080"     # host-only: used by the nightly eval and health checks
+    logging:
+      <<: *awslogs
+      options: { <<: *awslogs-opts, awslogs-group: /suki/gateway, tag: "{{.Name}}" }
+
+# For local development on a laptop, use docker-compose.local.yml (no AWS logging).

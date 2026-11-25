@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>What we would do next · Suki — SAM10 final project</title>
+<link rel="icon" href="assets/logo.svg">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="site"><div class="wrap">
+<a class="brand" href="index.html"><img src="assets/logo.svg" alt="">Suki · SAM10</a>
+<nav class="pages"><a href="index.html">Summary</a><a href="infrastructure.html">AWS design</a><a href="system.html">System card</a><a href="baseline.html">Baseline</a><a href="well-architected.html">Well-Architected</a><a href="operations.html">Monitoring · Backup · Security</a><a href="automation-incident.html">Automation · Incident</a><a href="results.html">Results</a><a href="next-steps.html" class=on>Next steps</a><a href="declaration.html">Declaration</a></nav>
+</div></header>
+<main class="wrap">
+
+<h1>What we would do next</h1>
+<p class="lead">Realistic improvements, most important first.</p>
+<div class="draft">These follow from the gaps in our Well-Architected review. Reorder or replace them based on what you actually observed.</div>
+<ol>
+  <li><strong>Remove the single point of failure, cheaply.</strong> Daily EBS snapshots with AWS Backup and an Auto Scaling group of one instance, so a dead server is replaced automatically and recovery no longer depends on us. Improves Reliability; small extra cost.</li>
+  <li><strong>Protect the front door.</strong> AWS WAF rate-based rule on CloudFront and a secret origin header checked by nginx, so only <em>our</em> distribution can reach the server and floods cannot exhaust the model quota.</li>
+  <li><strong>Close the feedback loop.</strong> A weekly summary e-mail of thumbs-down answers and the most-asked questions without good answers, so the salon can fix its content. Uses data LibreChat already stores.</li>
+  <li><strong>Better answers for numbers.</strong> Pre-computed discount prices in the knowledge base (or a small price-lookup tool), because arithmetic questions are where the model fails most.</li>
+  <li><strong>A real domain name.</strong> Route 53 + ACM certificate, so customers see a salon address instead of <code>cloudfront.net</code>.</li>
+</ol>
+
+</main>
+<footer class="site">Suki — Suklay &amp; Kulay salon assistant · SAM10 Systems Administration and Maintenance final project ·
+Jansdale S. Yusi &amp; Rhea Angeline G. Manipon · Built on <a href="https://github.com/danny-avila/LibreChat">LibreChat</a> (MIT) ·
+Suklay &amp; Kulay is a fictional business; all salon data is invented.</footer>
+</body>
+</html>

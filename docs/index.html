@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Executive summary · Suki — SAM10 final project</title>
+<link rel="icon" href="assets/logo.svg">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="site"><div class="wrap">
+<a class="brand" href="index.html"><img src="assets/logo.svg" alt="">Suki · SAM10</a>
+<nav class="pages"><a href="index.html" class=on>Summary</a><a href="infrastructure.html">AWS design</a><a href="system.html">System card</a><a href="baseline.html">Baseline</a><a href="well-architected.html">Well-Architected</a><a href="operations.html">Monitoring · Backup · Security</a><a href="automation-incident.html">Automation · Incident</a><a href="results.html">Results</a><a href="next-steps.html">Next steps</a><a href="declaration.html">Declaration</a></nav>
+</div></header>
+<main class="wrap">
+
+<div class="hero">
+  <img src="assets/logo.svg" alt="Suki logo: a rose colour droplet above a gold comb">
+  <div>
+    <h1>Suki — the Suklay &amp; Kulay salon assistant</h1>
+    <p class="lead">A chat assistant that answers customers' questions about a neighbourhood beauty salon, and the
+    operations work that keeps it running safely on AWS.</p>
+    <p><span class="pill">SAM10 final project</span> <span class="pill">LibreChat reskin</span> <span class="pill">AWS · ap-southeast-1</span></p>
+  </div>
+</div>
+
+<h2>Presentation video</h2>
+<div class="video">
+  <!-- Replace VIDEO_ID with your YouTube video ID (Share > Embed). Keep it Unlisted if you prefer. -->
+  <!-- <iframe src="https://www.youtube-nocookie.com/embed/VIDEO_ID" title="Suki SAM10 presentation" allowfullscreen></iframe> -->
+</div>
+<div class="evidence-needed" data-id="D2">Record the 5–8 minute presentation (both of you, live demo following this site's order), upload to YouTube, and paste the embed above.</div>
+
+<h2>What the system does</h2>
+<p><strong>Suki</strong> is a website where customers of <em>Suklay &amp; Kulay Beauty Studio</em> (a fictional salon) can ask
+questions in English, Filipino or Taglish: "How much is a women's haircut?", "Can I rebond and colour on the same day?",
+"Open ba kayo sa Monday?". Suki answers from the salon's own price list, policies and aftercare tips. It does not book
+appointments, take payments or give medical advice, and it tells people when it does not know.</p>
+<p>Under the hood we did not build an AI model. We took <a href="https://github.com/danny-avila/LibreChat">LibreChat</a>, an
+open-source ChatGPT-style application, gave it a new identity and our own salon content, and connected it to Google's
+Gemini model on the free tier.</p>
+
+<h2>What was wrong with how it was run</h2>
+<p>Out of the box, LibreChat ran on one laptop with no web address anyone else could use and no HTTPS. Its database had
+no password, its secret keys sat in a plain text file, and nothing was backed up, monitored or audited. If it broke at
+2 a.m. nobody would know, and if the disk died every conversation would be gone. The <a href="baseline.html">baseline page</a> records this starting point.</p>
+
+<h2>What we changed</h2>
+<ul>
+  <li><strong>Made it ours:</strong> new name, logo, colours and wording; our own invented salon knowledge base; salon terminology throughout.</li>
+  <li><strong>Put it on AWS:</strong> one small EC2 server behind CloudFront for HTTPS, with the salon content in S3 and every key in Parameter Store.</li>
+  <li><strong>Made it observable:</strong> a CloudWatch dashboard, 12 alarms that e-mail us, and a log line for every question with its response time and outcome.</li>
+  <li><strong>Made it recoverable:</strong> database backups every 6 hours to versioned S3, and a restore that we actually tested.</li>
+  <li><strong>Locked it down:</strong> MFA and one IAM user each, no SSH, the server reachable only through CloudFront, phone numbers and e-mails removed before anything reaches the AI provider, CloudTrail and GuardDuty on.</li>
+  <li><strong>Automated the chores:</strong> a health check every 5 minutes, a backup every 6 hours and a test-question run every 12 hours, all running unattended.</li>
+  <li><strong>Practised failure:</strong> we broke it on purpose (a full disk), found the root cause, fixed it, prevented it, and wrote a runbook.</li>
+</ul>
+
+<h2>What improved</h2>
+<table>
+  <tr><th>Measure</th><th>Before (dates)</th><th>After (dates)</th></tr>
+  <tr><td>Answer quality (test questions passed)</td><td><span class="todo">__ / 32 (date range)</span></td><td><span class="todo">__ / 32 (date range)</span></td></tr>
+  <tr><td>Time to detect a failure</td><td>never (nobody was told)</td><td><span class="todo">__ min (incident on __)</span></td></tr>
+  <tr><td>Data that could be lost</td><td>everything</td><td><span class="todo">at most 6 h of chats (RPO)</span></td></tr>
+  <tr><td>Time to recover the database</td><td>not possible</td><td><span class="todo">__ min, measured in the restore drill</span></td></tr>
+  <tr><td>Monthly cost</td><td><span class="todo">US$__</span></td><td><span class="todo">US$__</span></td></tr>
+</table>
+<p>All numbers, date ranges and graphs are on the <a href="results.html">Results page</a>.</p>
+
+<h2>Trade-off we chose</h2>
+<p class="draft">We optimised for <strong>Operational Excellence</strong> and <strong>Security</strong>: everything is defined in code,
+monitored, alerted and audited. We deliberately accepted weaker <strong>Reliability</strong>: one server in one Availability Zone,
+so a server failure means minutes of downtime while we rebuild from code and backups. For a free information assistant for one
+small salon, that is cheaper and simpler than running two of everything. Details on the <a href="well-architected.html">Well-Architected review</a>.</p>
+
+<h2>Links</h2>
+<ul>
+  <li>Live system: <span class="todo">https://dxxxxxxxx.cloudfront.net</span> (test accounts on request; registration is closed)</li>
+  <li>Repository: <span class="todo">https://github.com/YOUR-USER/suki-salon-assistant</span></li>
+</ul>
+
+<h2>Team</h2>
+<table>
+  <tr><th>Name</th><th>Main role</th><th>Presents in the video</th></tr>
+  <tr><td>Jansdale S. Yusi</td><td>AI and integration engineer: base system, reskin, gateway, AWS wiring</td><td><span class="todo">sections …</span></td></tr>
+  <tr><td>Rhea Angeline G. Manipon</td><td>Reliability engineer: dashboard, alarms, backups, automation, incident</td><td><span class="todo">sections …</span></td></tr>
+</table>
+<p>Shared: deployment, security and this website. The week-by-week contribution log is in the repository README.
+See the <a href="declaration.html">signed declaration</a>, including how we used AI tools.</p>
+
+</main>
+<footer class="site">Suki — Suklay &amp; Kulay salon assistant · SAM10 Systems Administration and Maintenance final project ·
+Jansdale S. Yusi &amp; Rhea Angeline G. Manipon · Built on <a href="https://github.com/danny-avila/LibreChat">LibreChat</a> (MIT) ·
+Suklay &amp; Kulay is a fictional business; all salon data is invented.</footer>
+</body>
+</html>

@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 700" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Suki AWS infrastructure</title>
+  <desc id="d">A question travels from the browser through CloudFront to nginx and LibreChat on one EC2 instance, then to the Suki gateway, which adds salon knowledge from S3 and calls Google Gemini outside AWS. Logs and metrics go to CloudWatch; alarms e-mail the team through SNS.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#6B2D5C"/></marker>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#8a8a8a"/></marker>
+    <style>
+      .box{fill:#fff;stroke:#6B2D5C;stroke-width:1.5}
+      .svc{fill:#FFF4F0;stroke:#E07A9B;stroke-width:1.5}
+      .ext{fill:#f4f4f4;stroke:#8a8a8a;stroke-width:1.5;stroke-dasharray:6 4}
+      .h{font-size:15px;font-weight:700;fill:#3b1834}
+      .s{font-size:12px;fill:#444}
+      .n{font-size:12px;font-weight:700;fill:#fff}
+      .flow{stroke:#6B2D5C;stroke-width:2.4;fill:none;marker-end:url(#a)}
+      .ops{stroke:#8a8a8a;stroke-width:1.4;fill:none;stroke-dasharray:5 4;marker-end:url(#g)}
+    </style>
+  </defs>
+  <rect width="1180" height="700" fill="#fffaf8"/>
+
+  <!-- region -->
+  <rect x="165" y="20" width="800" height="665" rx="16" fill="none" stroke="#3b1834" stroke-width="1.5"/>
+  <text class="h" x="185" y="48">AWS account · one region: ap-southeast-1 (Singapore)</text>
+
+  <!-- customer -->
+  <rect class="box" x="20" y="200" width="120" height="80" rx="10"/>
+  <text class="h" x="80" y="234" text-anchor="middle">Customer</text>
+  <text class="s" x="80" y="253" text-anchor="middle">web browser</text>
+
+  <!-- CloudFront + Lambda -->
+  <rect class="svc" x="185" y="200" width="130" height="80" rx="8"/>
+  <text class="h" x="250" y="230" text-anchor="middle">CloudFront</text>
+  <text class="s" x="250" y="248" text-anchor="middle">HTTPS, free cert</text>
+  <text class="s" x="250" y="264" text-anchor="middle">*.cloudfront.net</text>
+  <rect class="svc" x="185" y="315" width="130" height="62" rx="8"/>
+  <text class="h" x="250" y="340" text-anchor="middle">Lambda</text>
+  <text class="s" x="250" y="358" text-anchor="middle">health check /5 min</text>
+  <path class="ops" d="M250 315 V284"/>
+
+  <!-- EC2 -->
+  <rect class="box" x="345" y="80" width="440" height="310" rx="12"/>
+  <text class="h" x="362" y="106">EC2 t3.small · Amazon Linux 2023 · Docker</text>
+  <text class="s" x="362" y="124">Port 80 from CloudFront only · no SSH · IMDSv2 · encrypted disk</text>
+  <rect class="svc" x="365" y="145" width="190" height="62" rx="8"/><text class="h" x="460" y="171" text-anchor="middle">nginx</text><text class="s" x="460" y="190" text-anchor="middle">Suki branding · access log</text>
+  <rect class="svc" x="575" y="145" width="190" height="62" rx="8"/><text class="h" x="670" y="171" text-anchor="middle">LibreChat (reskinned)</text><text class="s" x="670" y="190" text-anchor="middle">web UI + API · login</text>
+  <rect class="svc" x="365" y="240" width="190" height="62" rx="8"/><text class="h" x="460" y="266" text-anchor="middle">MongoDB</text><text class="s" x="460" y="285" text-anchor="middle">users, conversations</text>
+  <rect class="svc" x="575" y="240" width="190" height="66" rx="8"/><text class="h" x="670" y="262" text-anchor="middle">Suki gateway</text><text class="s" x="670" y="280" text-anchor="middle">salon knowledge · PII filter</text><text class="s" x="670" y="296" text-anchor="middle">request log</text>
+  <rect class="svc" x="365" y="320" width="400" height="52" rx="8"/><text class="h" x="565" y="342" text-anchor="middle">CloudWatch agent · systemd timers</text><text class="s" x="565" y="360" text-anchor="middle">memory/disk metrics · 6-hourly backup to S3 · 12-hourly test run</text>
+
+  <!-- Gemini -->
+  <rect class="ext" x="1000" y="236" width="160" height="80" rx="10"/>
+  <text class="h" x="1080" y="264" text-anchor="middle">Google Gemini</text>
+  <text class="s" x="1080" y="282" text-anchor="middle">free-tier API</text>
+  <text class="s" x="1080" y="298" text-anchor="middle">outside AWS</text>
+
+  <!-- question flow -->
+  <path class="flow" d="M140 240 H182"/>
+  <path class="flow" d="M315 240 C335 240 340 176 362 176"/>
+  <path class="flow" d="M555 176 H572"/>
+  <path class="flow" d="M670 207 V237"/>
+  <path class="flow" d="M765 271 H997"/>
+  <path class="flow" d="M600 207 L540 238" stroke-dasharray="0"/>
+  <circle cx="161" cy="240" r="11" fill="#6B2D5C"/><text class="n" x="161" y="244" text-anchor="middle">1</text>
+  <circle cx="333" cy="205" r="11" fill="#6B2D5C"/><text class="n" x="333" y="209" text-anchor="middle">2</text>
+  <circle cx="564" cy="158" r="11" fill="#6B2D5C"/><text class="n" x="564" y="162" text-anchor="middle">3</text>
+  <circle cx="685" cy="222" r="11" fill="#6B2D5C"/><text class="n" x="685" y="226" text-anchor="middle">4</text>
+  <circle cx="880" cy="271" r="11" fill="#6B2D5C"/><text class="n" x="880" y="275" text-anchor="middle">5</text>
+  <text class="s" x="548" y="222" text-anchor="end">saves chat</text>
+
+  <!-- AWS services row -->
+  <rect class="svc" x="185" y="440" width="140" height="66" rx="8"/><text class="h" x="255" y="466" text-anchor="middle">Parameter Store</text><text class="s" x="255" y="485" text-anchor="middle">keys, SecureString</text>
+  <rect class="svc" x="345" y="440" width="140" height="66" rx="8"/><text class="h" x="415" y="466" text-anchor="middle">S3 (versioned)</text><text class="s" x="415" y="485" text-anchor="middle">content · backups · eval</text>
+  <rect class="svc" x="505" y="440" width="140" height="66" rx="8"/><text class="h" x="575" y="466" text-anchor="middle">CloudWatch</text><text class="s" x="575" y="485" text-anchor="middle">logs · alarms · dashboard</text>
+  <rect class="svc" x="665" y="440" width="140" height="66" rx="8"/><text class="h" x="735" y="466" text-anchor="middle">SNS</text><text class="s" x="735" y="485" text-anchor="middle">e-mail alerts</text>
+  <path class="ops" d="M400 390 L280 437"/>
+  <path class="ops" d="M450 390 L425 437"/>
+  <path class="ops" d="M560 390 L572 437"/>
+  <path class="ops" d="M645 473 H662"/>
+  <path class="ops" d="M805 473 H997"/>
+  <text class="s" x="300" y="420">reads keys at runtime</text>
+  <text class="s" x="440" y="430">knowledge, backups</text>
+  <text class="s" x="582" y="420">logs, metrics</text>
+
+  <!-- governance row -->
+  <rect class="svc" x="185" y="530" width="180" height="56" rx="8"/><text class="h" x="275" y="554" text-anchor="middle">CloudTrail</text><text class="s" x="275" y="572" text-anchor="middle">audit: who did what</text>
+  <rect class="svc" x="385" y="530" width="180" height="56" rx="8"/><text class="h" x="475" y="554" text-anchor="middle">GuardDuty</text><text class="s" x="475" y="572" text-anchor="middle">threat findings</text>
+  <rect class="svc" x="585" y="530" width="180" height="56" rx="8"/><text class="h" x="675" y="554" text-anchor="middle">AWS Budgets</text><text class="s" x="675" y="572" text-anchor="middle">cost alert e-mail</text>
+  <rect class="svc" x="185" y="606" width="580" height="56" rx="8"/><text class="h" x="475" y="630" text-anchor="middle">IAM: one user per student with MFA · EC2 instance role · GitHub OIDC deploy role</text><text class="s" x="475" y="648" text-anchor="middle">least privilege, no long-lived keys on the server or in GitHub</text>
+
+  <!-- inbox + legend -->
+  <rect class="ext" x="1000" y="438" width="160" height="70" rx="10"/>
+  <text class="h" x="1080" y="468" text-anchor="middle">Team inbox</text>
+  <text class="s" x="1080" y="486" text-anchor="middle">alarms + budget</text>
+  <text class="h" x="990" y="560">A question, step by step</text>
+  <text class="s" x="990" y="580">1 browser → CloudFront (HTTPS)</text>
+  <text class="s" x="990" y="597">2 CloudFront → EC2 port 80</text>
+  <text class="s" x="990" y="614">3 nginx → LibreChat</text>
+  <text class="s" x="990" y="631">4 LibreChat → Suki gateway</text>
+  <text class="s" x="990" y="648">5 gateway → Gemini; the answer</text>
+  <text class="s" x="990" y="665">   streams back the same way</text>
+  <text class="s" x="990" y="687">solid = question · dashed = ops</text>
+</svg>

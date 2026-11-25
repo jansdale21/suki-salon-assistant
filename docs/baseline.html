@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Baseline · Suki — SAM10 final project</title>
+<link rel="icon" href="assets/logo.svg">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="site"><div class="wrap">
+<a class="brand" href="index.html"><img src="assets/logo.svg" alt="">Suki · SAM10</a>
+<nav class="pages"><a href="index.html">Summary</a><a href="infrastructure.html">AWS design</a><a href="system.html">System card</a><a href="baseline.html" class=on>Baseline</a><a href="well-architected.html">Well-Architected</a><a href="operations.html">Monitoring · Backup · Security</a><a href="automation-incident.html">Automation · Incident</a><a href="results.html">Results</a><a href="next-steps.html">Next steps</a><a href="declaration.html">Declaration</a></nav>
+</div></header>
+<main class="wrap">
+
+<h1>Baseline: the environment before we touched it</h1>
+<p class="lead">What stock LibreChat looks like when you follow its quick start, and what that would mean in production.</p>
+
+<h2>How we ran the baseline</h2>
+<p><span class="todo">Date, machine (laptop OS, RAM), LibreChat version/commit.</span> We cloned the upstream repository and ran its
+default <code>docker compose up</code> with the example <code>.env</code>, then connected a Gemini key.</p>
+<div class="evidence-needed" data-id="E-05">Screenshot of stock LibreChat running locally (same image as on the System page is fine) plus <code>docker compose ps</code> output.</div>
+
+<h2>What we found (from the upstream docker-compose.yml and .env.example)</h2>
+<table>
+  <tr><th>Area</th><th>Stock behaviour</th><th>Risk in production</th></tr>
+  <tr><td>Database</td><td>MongoDB started with <code>mongod --noauth</code></td><td>Anyone who can reach the port can read or delete every conversation</td></tr>
+  <tr><td>Secrets</td><td>API keys, JWT and encryption secrets in a plain <code>.env</code> file next to the code</td><td>Easy to commit to Git or leak in a screenshot</td></tr>
+  <tr><td>Extra services</td><td>Meilisearch, pgvector and a RAG API container; pgvector with a hard-coded example password</td><td>More memory, more attack surface, more to patch</td></tr>
+  <tr><td>Network</td><td>App port published on the host, plain HTTP</td><td>Passwords and chats travel unencrypted</td></tr>
+  <tr><td>Backups</td><td>None</td><td>A disk failure loses all users and conversations</td></tr>
+  <tr><td>Monitoring and alerts</td><td>Container logs on the local disk only; no metrics, alarms or dashboard</td><td>Nobody notices an outage; logs can fill the disk</td></tr>
+  <tr><td>Access and audit</td><td>Whoever has the laptop is admin; open registration</td><td>No accountability, anyone can sign up and use the quota</td></tr>
+  <tr><td>Cost control</td><td>None</td><td>A loop or abuse can run up a model bill unnoticed</td></tr>
+</table>
+
+<h2>Baseline numbers</h2>
+<p>Measured the same way as the "after" numbers on the <a href="results.html">Results page</a>.</p>
+<table>
+  <tr><th>Measure</th><th>Value</th><th>How / when</th></tr>
+  <tr><td>Memory used by the stock stack</td><td><span class="todo">__ MiB</span></td><td><code>docker stats --no-stream</code>, date</td></tr>
+  <tr><td>Containers running</td><td><span class="todo">__</span></td><td><code>docker compose ps</code></td></tr>
+  <tr><td>Answer quality on our 32 questions (stock prompt, no knowledge base)</td><td><span class="todo">__ / 32</span></td><td>run_eval.py against stock config, date</td></tr>
+  <tr><td>Backups / alarms / audit trail</td><td>0 / 0 / none</td><td>inspection</td></tr>
+</table>
+
+</main>
+<footer class="site">Suki — Suklay &amp; Kulay salon assistant · SAM10 Systems Administration and Maintenance final project ·
+Jansdale S. Yusi &amp; Rhea Angeline G. Manipon · Built on <a href="https://github.com/danny-avila/LibreChat">LibreChat</a> (MIT) ·
+Suklay &amp; Kulay is a fictional business; all salon data is invented.</footer>
+</body>
+</html>

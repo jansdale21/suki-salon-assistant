@@ -1,0 +1,57 @@
+# S-band (WS-E item 4): a push to main uploads the salon content to S3 and redeploys the instance.
+# Uses GitHub OIDC -> the GitHubDeployRole from the CloudFormation stack. No AWS keys in GitHub.
+# Setup: repository Settings > Secrets and variables > Actions > Variables:
+#   AWS_DEPLOY_ROLE_ARN = (stack output GitHubDeployRoleArn)
+#   AWS_REGION          = ap-southeast-1
+#   SUKI_INSTANCE_ID    = (stack output InstanceId)
+#   SUKI_CONTENT_BUCKET = (stack output ContentBucketName)
+name: deploy
+on:
+  push:
+    branches: [main]
+    paths: ['app/**', 'content/**', 'infra/scripts/**', 'ops/**']
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency: { group: deploy, cancel-in-progress: false }
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install -r app/gateway/requirements.txt pytest
+      - run: cd app/gateway && pytest -q
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: vars.AWS_DEPLOY_ROLE_ARN != ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Upload salon content to S3
+        run: aws s3 sync content/ "s3://${{ vars.SUKI_CONTENT_BUCKET }}/content/" --exclude '*' --include '*.md'
+      - name: Redeploy on the instance (SSM Run Command, no SSH)
+        run: |
+          CMD_ID=$(aws ssm send-command --instance-ids "${{ vars.SUKI_INSTANCE_ID }}" \
+            --document-name AWS-RunShellScript --comment "deploy ${GITHUB_SHA::7}" \
+            --parameters 'commands=["bash /opt/suki/infra/scripts/deploy.sh --pull"]' \
+            --query Command.CommandId --output text)
+          echo "SSM command: $CMD_ID"
+          for i in $(seq 1 60); do
+            STATUS=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "${{ vars.SUKI_INSTANCE_ID }}" --query Status --output text 2>/dev/null || echo Pending)
+            echo "status: $STATUS"
+            case "$STATUS" in Success) exit 0;; Failed|Cancelled|TimedOut) \
+              aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "${{ vars.SUKI_INSTANCE_ID }}" --query StandardErrorContent --output text; exit 1;; esac
+            sleep 10
+          done
+          exit 1

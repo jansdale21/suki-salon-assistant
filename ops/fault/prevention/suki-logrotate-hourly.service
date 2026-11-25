@@ -1,0 +1,6 @@
+[Unit]
+Description=Rotate Suki logs (size-capped) every hour
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/logrotate /etc/logrotate.d/suki

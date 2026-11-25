@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Automation and the incident · Suki — SAM10 final project</title>
+<link rel="icon" href="assets/logo.svg">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="site"><div class="wrap">
+<a class="brand" href="index.html"><img src="assets/logo.svg" alt="">Suki · SAM10</a>
+<nav class="pages"><a href="index.html">Summary</a><a href="infrastructure.html">AWS design</a><a href="system.html">System card</a><a href="baseline.html">Baseline</a><a href="well-architected.html">Well-Architected</a><a href="operations.html">Monitoring · Backup · Security</a><a href="automation-incident.html" class=on>Automation · Incident</a><a href="results.html">Results</a><a href="next-steps.html">Next steps</a><a href="declaration.html">Declaration</a></nav>
+</div></header>
+<main class="wrap">
+
+<h1>Automation and the incident</h1>
+
+<h2>Automations (WS-E)</h2>
+<table>
+  <tr><th>#</th><th>Automation</th><th>Trigger</th><th>What it does</th><th>Code</th></tr>
+  <tr><td>1</td><td>Health check</td><td>EventBridge, every 5 min</td><td>Calls <code>/health</code> through CloudFront, publishes <code>Suki/HealthCheckOK</code>; alarm after two failures</td><td><code>infra/cloudformation/suki-stack.yaml</code> (HealthCheckFunction)</td></tr>
+  <tr><td>2</td><td>Scheduled backup</td><td>systemd timer, every 6 h (00/06/12/18 PHT)</td><td>MongoDB dump + manifest + config tarball to S3; metric; e-mail on failure</td><td><code>ops/backup/backup.sh</code></td></tr>
+  <tr><td>3</td><td>Scheduled test run</td><td>systemd timer, 03:00 and 15:00 PHT</td><td>32 test questions through the gateway; pass rate to CloudWatch, S3 and e-mail</td><td><code>ops/eval/run_eval.py</code></td></tr>
+  <tr><td>4 (S)</td><td>Deploy on push</td><td>GitHub Actions on <code>main</code></td><td>Tests, uploads content to S3, redeploys through SSM Run Command (OIDC, no keys)</td><td><code>.github/workflows/deploy.yml</code></td></tr>
+</table>
+<h3>Proof they ran unattended (at least twice each)</h3>
+<table>
+  <tr><th>Automation</th><th>Run 1 (timestamp)</th><th>Run 2 (timestamp)</th><th>Where the log line is</th></tr>
+  <tr><td>Health check</td><td><span class="todo"></span></td><td><span class="todo"></span></td><td><code>/aws/lambda/suki-healthcheck</code></td></tr>
+  <tr><td>Scheduled backup</td><td><span class="todo"></span></td><td><span class="todo"></span></td><td><code>/suki/automation</code> stream <code>…-backup</code></td></tr>
+  <tr><td>Scheduled test run</td><td><span class="todo"></span></td><td><span class="todo"></span></td><td><code>/suki/automation</code> stream <code>…-eval</code> + e-mail</td></tr>
+</table>
+<div class="evidence-needed" data-id="E-14">Screenshots or pasted log lines with timestamps for at least two unattended runs of each automation (e.g. <code>systemctl list-timers</code> plus the backup.log lines, Lambda log lines).</div>
+
+<h2 id="incident">Incident: the disk filled up (WS-F)</h2>
+<p class="todo">Write this section only from what actually happened when you ran the fault. Delete these guide notes when done.</p>
+<p><em>How the fault was created:</em> <code>sudo ops/fault/inject-disk-fault.sh</code> starts a background process that writes debug log lines to
+<code>/var/log/suki/noisy-debug.log</code> until the root disk reaches 97%, the kind of thing that happens when debug logging is left on.
+We then investigated it as if we did not know the cause.</p>
+
+<h3>Timeline</h3>
+<table>
+  <tr><th>Event</th><th>Time (PHT)</th><th>Source</th></tr>
+  <tr><td>Fault started</td><td><span class="todo"></span></td><td><code>fault.log</code> fault_started</td></tr>
+  <tr><td>Alarm fired (<code>suki-ec2-disk-used-high</code>)</td><td><span class="todo"></span></td><td>alarm history / e-mail</td></tr>
+  <tr><td>We noticed and started investigating</td><td><span class="todo"></span></td><td></td></tr>
+  <tr><td>Fixed (service healthy, disk normal)</td><td><span class="todo"></span></td><td><code>fault.log</code> fault_resolved</td></tr>
+  <tr><td><strong>Time to detect</strong> (start → alarm)</td><td><span class="todo">__ min</span></td><td></td></tr>
+  <tr><td><strong>Time to fix</strong> (alarm → fixed)</td><td><span class="todo">__ min</span></td><td></td></tr>
+</table>
+<h3>Investigation</h3>
+<div class="evidence-needed" data-id="E-15">Paste the real commands and output: <code>df -h /</code>, <code>sudo du -xh / --max-depth=2 | sort -h | tail</code>, <code>sudo lsof +L1</code>, <code>docker compose logs --tail 50 mongodb</code>, what the app and alarms showed (answers failing? 5xx?).</div>
+<h3>Root cause</h3>
+<p class="todo">A chain, not "we restarted it": e.g. "a process wrote unbounded debug logs into /var/log/suki; logrotate only ran once a day, so the 20 GB disk filled in N minutes; MongoDB could not write, so LibreChat returned errors and answers failed."</p>
+<h3>Fix and prevention</h3>
+<p class="todo">The fix (what you removed or rotated) and the one change that stops it happening again (for example giving <code>/var/log/suki</code> its own capped 2 GiB volume with <code>ops/fault/prevention/isolate-log-volume.sh</code>), plus the evidence it worked: re-run the injector and show that only the log volume fills while the root disk stays below the alarm line.</p>
+
+<h2 id="runbook">Runbook: root disk filling up</h2>
+<pre><code># RUNBOOK: Root disk above 85% on the Suki instance
+Owner: Suki ops (Yusi / Manipon)   Last tested: YYYY-MM-DD   Takes: ~15 min   Ask: the other teammate
+
+1. WHAT THIS IS FOR
+Free up disk space on the Suki EC2 instance and stop it filling again.
+
+2. HOW YOU KNOW YOU NEED IT
+Alarm "suki-ec2-disk-used-high" e-mail; or answers failing / HTTP 5xx with MongoDB write errors.
+Command that shows the problem:
+  aws ssm start-session --target &lt;instance-id&gt;      # from your laptop
+  df -h /
+
+3. WHAT IT AFFECTS
+At 100% MongoDB cannot write: logins and new chats fail for every user. Below 100% nothing yet.
+
+4. HOW TO DO IT
+Step 1: sudo du -xh / --max-depth=2 2&gt;/dev/null | sort -h | tail -15   -&gt; you should see the biggest folders
+Step 2: sudo du -sh /var/log/suki/* /var/lib/docker/* 2&gt;/dev/null | sort -h | tail  -&gt; find the culprit
+Step 3: sudo lsof +L1                                   -&gt; deleted-but-open files still holding space
+Step 4: if it is a log file: sudo truncate -s 0 &lt;file&gt;  (truncate, don't rm, if a process holds it open)
+        if it is old Docker images: sudo docker image prune -af
+        if a runaway process is writing: identify with  sudo lsof &lt;file&gt;  then stop it
+Step 5: df -h /                                         -&gt; you should see usage back under 70%
+Step 6: cd /opt/suki &amp;&amp; sudo docker compose --project-directory app -f app/docker-compose.yml ps   -&gt; all "Up"
+Step 7: sudo /opt/suki/ops/fault/mark-resolved.sh "what you did"   (records the time-to-fix)
+
+5. HOW TO CHECK IT WORKED
+- [ ] the original symptom is gone (df -h / below 85%)
+- [ ] ask the test question "How much is a women's haircut?" and get ₱350
+- [ ] no new alarms for 10 minutes; suki-ec2-disk-used-high back to OK
+
+6. HOW TO UNDO IT
+Truncation and pruning cannot be undone; never delete anything under /opt/suki/app/data (database).
+If a container will not start afterwards: sudo /opt/suki/infra/scripts/deploy.sh
+
+7. GOTCHAS
+&lt;fill in from your real incident: e.g. rm on an open log file frees nothing until the process stops&gt;
+
+8. CHANGE HISTORY
+YYYY-MM-DD - first version after the disk-full incident
+</code></pre>
+
+</main>
+<footer class="site">Suki — Suklay &amp; Kulay salon assistant · SAM10 Systems Administration and Maintenance final project ·
+Jansdale S. Yusi &amp; Rhea Angeline G. Manipon · Built on <a href="https://github.com/danny-avila/LibreChat">LibreChat</a> (MIT) ·
+Suklay &amp; Kulay is a fictional business; all salon data is invented.</footer>
+</body>
+</html>

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AWS infrastructure design · Suki — SAM10 final project</title>
+<link rel="icon" href="assets/logo.svg">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="site"><div class="wrap">
+<a class="brand" href="index.html"><img src="assets/logo.svg" alt="">Suki · SAM10</a>
+<nav class="pages"><a href="index.html">Summary</a><a href="infrastructure.html" class=on>AWS design</a><a href="system.html">System card</a><a href="baseline.html">Baseline</a><a href="well-architected.html">Well-Architected</a><a href="operations.html">Monitoring · Backup · Security</a><a href="automation-incident.html">Automation · Incident</a><a href="results.html">Results</a><a href="next-steps.html">Next steps</a><a href="declaration.html">Declaration</a></nav>
+</div></header>
+<main class="wrap">
+
+<h1>AWS infrastructure design</h1>
+<p class="lead">Where every part of Suki runs, and how one question travels from a customer to the model and back.</p>
+<figure>
+  <img src="assets/architecture.svg" alt="Architecture diagram of Suki on AWS">
+  <figcaption>Figure 1. Suki on AWS: one region, one EC2 instance, one database. Source: <code>docs/assets/architecture.svg</code> (keep it updated when anything changes).</figcaption>
+</figure>
+
+<h2>How a question travels</h2>
+<ol>
+  <li>The customer's browser sends the question over <strong>HTTPS</strong> to <strong>Amazon CloudFront</strong>, which provides the free <code>*.cloudfront.net</code> certificate.</li>
+  <li>CloudFront forwards it (no caching for chat traffic) to our <strong>EC2 instance</strong> on port 80. The security group accepts port 80 <em>only</em> from CloudFront's managed prefix list, so the server cannot be reached directly.</li>
+  <li><strong>nginx</strong> serves Suki's branding, logs the request as JSON (status and time, no IP address), and passes it to <strong>LibreChat</strong>.</li>
+  <li>LibreChat checks the login, saves the message in <strong>MongoDB</strong> and sends the conversation to the <strong>Suki gateway</strong>, a small service we wrote.</li>
+  <li>The gateway removes phone numbers and e-mail addresses, adds the salon knowledge base (read from <strong>S3</strong>), and calls <strong>Google Gemini</strong> with a key read from <strong>Parameter Store</strong>. Gemini runs outside AWS. The answer streams back the same way, and the gateway writes one log line: question, time taken, success, model, knowledge version and app version.</li>
+</ol>
+
+<h2>Services and why we use them</h2>
+<table>
+  <tr><th>Service</th><th>What it does for Suki</th><th>Sizing / notes</th></tr>
+  <tr><td>EC2 (t3.small, Amazon Linux 2023)</td><td>Runs Docker: nginx, LibreChat, MongoDB, Suki gateway; CloudWatch agent; backup and test timers</td><td>2 vCPU, 2 GiB RAM + 2 GiB swap, 20 GiB gp3 encrypted. Search/RAG containers removed to fit.</td></tr>
+  <tr><td>Elastic IP</td><td>Stable origin address for CloudFront</td><td>Billed like any public IPv4 address</td></tr>
+  <tr><td>CloudFront</td><td>HTTPS front door, caches static <code>/assets/*</code></td><td>Default certificate, PriceClass_200 (includes Asia)</td></tr>
+  <tr><td>S3 (one versioned bucket)</td><td><code>content/</code> salon knowledge · <code>backups/</code> database dumps every 6 h (14-day lifecycle) · <code>eval/</code> test results</td><td>Encrypted, public access blocked, HTTPS-only policy</td></tr>
+  <tr><td>SSM Parameter Store</td><td>All secrets as SecureString under <code>/suki/prod</code>; also the model name and public URL</td><td>Instance role can read only <code>/suki/prod*</code></td></tr>
+  <tr><td>CloudWatch</td><td>Log groups (30–90 day retention), metric filters, 12 alarms, <em>Suki-Operations</em> dashboard</td><td>Custom metrics in the <code>Suki</code> and <code>CWAgent</code> namespaces</td></tr>
+  <tr><td>SNS</td><td>E-mails every alarm, failed backup and test-run summary to our inbox</td><td></td></tr>
+  <tr><td>Lambda + EventBridge</td><td>Health check through CloudFront every 5 minutes</td><td>Python 3.12, 128 MB</td></tr>
+  <tr><td>Systems Manager Session Manager</td><td>Shell access without SSH keys or open port 22</td><td></td></tr>
+  <tr><td>CloudTrail, GuardDuty, AWS Budgets</td><td>Audit trail, threat detection, cost alerts</td><td>Trail logs kept 90 days</td></tr>
+  <tr><td>IAM</td><td>One user per student with MFA; instance role; GitHub OIDC deploy role</td><td>No long-lived access keys on the server or in GitHub</td></tr>
+  <tr><td>Google Gemini (external)</td><td>The language model</td><td>Free tier, key in Parameter Store; model name changeable without redeploying</td></tr>
+</table>
+
+<h2>Everything is code</h2>
+<p>The whole environment is one CloudFormation template, <code>infra/cloudformation/suki-stack.yaml</code>. It is deployed with
+<code>infra/scripts/deploy-stack.sh</code>, and the server configures itself on first boot from the repository. This means
+the system can be <em>rebuilt</em>, not just restored.</p>
+<div class="evidence-needed" data-id="E-18">After deploying, add a screenshot of the CloudFormation stack's Resources tab (or the output of <code>aws cloudformation describe-stack-resources</code>) under this paragraph, so the diagram is backed by the real account.</div>
+
+<h2>Diagram change history</h2>
+<table><tr><th>Date</th><th>Change</th></tr>
+<tr><td><span class="todo">YYYY-MM-DD</span></td><td>First version, before deployment</td></tr></table>
+
+</main>
+<footer class="site">Suki — Suklay &amp; Kulay salon assistant · SAM10 Systems Administration and Maintenance final project ·
+Jansdale S. Yusi &amp; Rhea Angeline G. Manipon · Built on <a href="https://github.com/danny-avila/LibreChat">LibreChat</a> (MIT) ·
+Suklay &amp; Kulay is a fictional business; all salon data is invented.</footer>
+</body>
+</html>

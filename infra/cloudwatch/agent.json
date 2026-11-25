@@ -1,0 +1,71 @@
+{
+  "agent": {
+    "metrics_collection_interval": 60,
+    "run_as_user": "root"
+  },
+  "metrics": {
+    "namespace": "CWAgent",
+    "append_dimensions": {
+      "InstanceId": "${aws:InstanceId}"
+    },
+    "metrics_collected": {
+      "mem": {
+        "measurement": [
+          "mem_used_percent"
+        ]
+      },
+      "swap": {
+        "measurement": [
+          "swap_used_percent"
+        ]
+      },
+      "disk": {
+        "measurement": [
+          "used_percent"
+        ],
+        "resources": [
+          "/"
+        ],
+        "drop_device": true
+      }
+    }
+  },
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/var/log/suki/backup.log",
+            "log_group_name": "/suki/automation",
+            "log_stream_name": "{instance_id}-backup"
+          },
+          {
+            "file_path": "/var/log/suki/eval.log",
+            "log_group_name": "/suki/automation",
+            "log_stream_name": "{instance_id}-eval"
+          },
+          {
+            "file_path": "/var/log/suki/deploy.log",
+            "log_group_name": "/suki/automation",
+            "log_stream_name": "{instance_id}-deploy"
+          },
+          {
+            "file_path": "/var/log/suki/restore.log",
+            "log_group_name": "/suki/automation",
+            "log_stream_name": "{instance_id}-restore"
+          },
+          {
+            "file_path": "/var/log/suki-userdata.log",
+            "log_group_name": "/suki/automation",
+            "log_stream_name": "{instance_id}-bootstrap"
+          },
+          {
+            "file_path": "/var/log/suki/fault.log",
+            "log_group_name": "/suki/automation",
+            "log_stream_name": "{instance_id}-fault"
+          }
+        ]
+      }
+    }
+  }
+}

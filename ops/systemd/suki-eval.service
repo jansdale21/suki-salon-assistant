@@ -1,0 +1,11 @@
+[Unit]
+Description=Suki scheduled test-question run (every 12 h) (pass rate to CloudWatch, S3 and e-mail)
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/suki.env
+ExecStart=/usr/bin/python3 /opt/suki/ops/eval/run_eval.py --notify --upload
+StandardOutput=append:/var/log/suki/eval.log
+StandardError=append:/var/log/suki/eval.log

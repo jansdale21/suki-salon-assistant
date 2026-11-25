@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Monitoring, backup and restore, security · Suki — SAM10 final project</title>
+<link rel="icon" href="assets/logo.svg">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="site"><div class="wrap">
+<a class="brand" href="index.html"><img src="assets/logo.svg" alt="">Suki · SAM10</a>
+<nav class="pages"><a href="index.html">Summary</a><a href="infrastructure.html">AWS design</a><a href="system.html">System card</a><a href="baseline.html">Baseline</a><a href="well-architected.html">Well-Architected</a><a href="operations.html" class=on>Monitoring · Backup · Security</a><a href="automation-incident.html">Automation · Incident</a><a href="results.html">Results</a><a href="next-steps.html">Next steps</a><a href="declaration.html">Declaration</a></nav>
+</div></header>
+<main class="wrap">
+
+<h1>Monitoring, backup and restore, and security</h1>
+
+<h2 id="monitoring">Monitoring (WS-B)</h2>
+<h3>Dashboard</h3>
+<div class="evidence-needed" data-id="E-06">Screenshot of the <em>Suki-Operations</em> CloudWatch dashboard with at least a day of real data (time range visible). Caption it with the date range.</div>
+<p>Widgets: request count, error count, response time, CPU, disk used, memory, health check, backup/eval and an alarm-status panel.</p>
+
+<h3>Alarms (12) and why we chose each threshold</h3>
+<table><tr><th>Alarm</th><th>Metric</th><th>Threshold</th><th>Why this threshold (one sentence)</th></tr><tr><td><code>suki-ec2-cpu-high</code></td><td>EC2 CPUUtilization</td><td>&gt; 85% avg for 10 min</td><td>Matches the starter set; short spikes during a deploy are normal, 10 minutes of it means a stuck process or a loop.</td></tr><tr><td><code>suki-ec2-status-check-failed</code></td><td>EC2 StatusCheckFailed</td><td>&gt; 0 for 2 min</td><td>The instance or its host is broken; nothing else works until this is fixed.</td></tr><tr><td><code>suki-ec2-disk-used-high</code></td><td>CWAgent disk_used_percent (/)</td><td>&gt; 85% for 10 min</td><td>Gives time to clean up before MongoDB stops writing at 100%; 10 minutes instead of 1 hour because our disk can fill in minutes (see the incident).</td></tr><tr><td><code>suki-ec2-memory-high</code></td><td>CWAgent mem_used_percent</td><td>&gt; 90% for 5 min</td><td>On 2 GiB RAM, above 90% LibreChat or MongoDB is close to being OOM-killed.</td></tr><tr><td><code>suki-http-5xx</code></td><td>Suki/Http5xx (nginx log)</td><td>&gt; 0 in 1 min</td><td>Any server error means a real user saw a broken page; there is no 'acceptable' level at our traffic.</td></tr><tr><td><code>suki-http-slow</code></td><td>Suki/HttpResponseTime p90 (non-streaming)</td><td>&gt; 3 s over 5 min</td><td>The starter-set 3-second rule, applied to pages and API calls; streaming chat is measured separately.</td></tr><tr><td><code>suki-answers-failed-rate</code></td><td>Suki AnswersFailed / AnswersTotal</td><td>&gt; 5% over 15 min</td><td>The system is up but not useful: catches model errors, quota and missing knowledge.</td></tr><tr><td><code>suki-empty-answer</code></td><td>Suki/EmptyAnswer</td><td>&gt; 0 in 30 min</td><td>An empty answer almost always means the content or the model call is broken.</td></tr><tr><td><code>suki-model-latency-high</code></td><td>Suki/AnswerLatencyMs avg</td><td>&gt; 15 s over 15 min</td><td>Gemini answers usually stream in a few seconds; 15 s on average means the provider is struggling.</td></tr><tr><td><code>suki-model-rate-limited</code></td><td>Suki/ModelRateLimited (HTTP 429)</td><td>&ge; 3 in 15 min</td><td>The free tier has request limits; repeated 429s mean customers are being refused.</td></tr><tr><td><code>suki-healthcheck-failed</code></td><td>Suki/HealthCheckOK (Lambda)</td><td>&lt; 1 for 2 × 5 min; missing = alarm</td><td>Checks the public URL from outside the server, through CloudFront, exactly as a customer would.</td></tr><tr><td><code>suki-backup-missing</code></td><td>Suki/BackupSucceeded</td><td>&lt; 1 in 24 h; missing = alarm</td><td>A backup that silently stops is worse than none; this alarms if the 6-hourly job has not reported success for a day.</td></tr></table>
+<p>All alarms send to the SNS topic <em>Suki alerts</em>, which e-mails our real inbox. A monthly AWS Budget also e-mails us at 50%, 80% (actual) and 100% (forecast).</p>
+<div class="evidence-needed" data-id="E-07">Screenshot of the CloudWatch Alarms list (all 12, with states).</div>
+<div class="evidence-needed" data-id="E-08">Screenshot of an alarm e-mail you received, with date and time visible, and one sentence on what you did about it.</div>
+
+<h3>Request logging</h3>
+<table>
+  <tr><th>Log group</th><th>What</th><th>Retention</th></tr>
+  <tr><td><code>/suki/gateway</code></td><td>One JSON line per question: question (PII removed), latency, first-token time, success, empty, HTTP status, model, knowledge version, app version, source (web or eval)</td><td>30 days</td></tr>
+  <tr><td><code>/suki/nginx</code></td><td>One JSON line per HTTP request: path, status, time (no IP)</td><td>30 days</td></tr>
+  <tr><td><code>/suki/app</code></td><td>LibreChat application log (JSON)</td><td>30 days</td></tr>
+  <tr><td><code>/suki/mongodb</code></td><td>Database log</td><td>14 days</td></tr>
+  <tr><td><code>/suki/automation</code></td><td>Backup, restore, eval, deploy, fault and bootstrap logs</td><td>90 days</td></tr>
+</table>
+<div class="evidence-needed" data-id="E-09">Paste 3–5 real lines from <code>/suki/gateway</code> (CloudWatch Logs Insights: <code>fields @timestamp, question, latency_ms, success, model, app_version | filter event='chat' | sort @timestamp desc | limit 5</code>).</div>
+<p><strong>Custom "usefulness" metric (S):</strong> CloudWatch metric filters turn the gateway lines into <code>Suki/AnswersTotal</code>,
+<code>AnswersFailed</code> and <code>EmptyAnswer</code>, so <code>suki-answers-failed-rate</code> fires when Suki stops being useful even though every server is healthy.</p>
+
+<h2 id="backup">Backup and restore (WS-C)</h2>
+<h3>What would have to be restored</h3>
+<table>
+  <tr><th>Item</th><th>Where it lives</th><th>How it is protected</th></tr>
+  <tr><td>Users and conversations</td><td>MongoDB on the instance's EBS volume</td><td><code>mongodump</code> every 6 hours to <code>s3://…/backups/mongo/</code>, 14 days, with a manifest of document counts</td></tr>
+  <tr><td>Salon knowledge base</td><td>S3 <code>content/</code> (+ Git)</td><td>S3 versioning (60 days of old versions) and Git history</td></tr>
+  <tr><td>Configuration (LibreChat, nginx, branding, scripts)</td><td>Git repository</td><td>GitHub, plus a config tarball in S3 with every backup</td></tr>
+  <tr><td>Secrets and settings</td><td>Parameter Store <code>/suki/prod</code></td><td>Stay in Parameter Store (never copied); names recorded in each backup manifest; values can be regenerated except the Gemini key, which can be re-issued in Google AI Studio</td></tr>
+  <tr><td>Infrastructure</td><td>CloudFormation template in Git</td><td>Recreate with <code>deploy-stack.sh</code></td></tr>
+</table>
+<h3>Backup configuration</h3>
+<p>MongoDB runs in a container (not RDS), so the brief's rule is "a scheduled dump to S3 kept for at least 7 days":
+<code>suki-backup.timer</code> runs <code>ops/backup/backup.sh</code> every 6 hours (00:00, 06:00, 12:00, 18:00 Asia/Manila); the bucket is versioned and its lifecycle rule keeps backups 14 days.
+On success it publishes <code>Suki/BackupSucceeded</code>; if no backup succeeds for 24 hours, <code>suki-backup-missing</code> fires.</p>
+<div class="evidence-needed" data-id="E-10">Paste <code>aws s3 ls s3://BUCKET/backups/mongo/ --recursive</code>, <code>aws s3api get-bucket-versioning</code> and the lifecycle rule (from ops/evidence/collect-evidence.sh).</div>
+<h3>Restore test</h3>
+<p>We ran <code>sudo ops/backup/restore-drill.sh --live</code>: it stopped the app, moved the live database directory aside (simulating loss),
+started an empty MongoDB, restored the newest dump from S3, compared document counts with the manifest, restarted the app, and timed the whole thing. We then logged in and checked our test conversations were back.</p>
+<div class="evidence-needed" data-id="E-11">Paste the restore-drill output (expected vs restored counts, counts_match, rto_seconds) and a screenshot of logging in afterwards with the old conversations visible. Date of the test.</div>
+<h3>RPO and RTO</h3>
+<p class="draft">RPO: we can lose up to 6 hours of conversations (the time since the last dump); salon content and configuration lose nothing because they are versioned in S3 and Git.
+RTO: restoring the database on the running server took <span class="todo">__ minutes</span> in our drill; rebuilding everything from scratch (new stack + restore) would take about <span class="todo">__ minutes</span>, mostly waiting for CloudFront and the instance bootstrap.</p>
+
+<h2 id="security">Security (WS-D)</h2>
+<table>
+  <tr><th>Control</th><th>Risk it addresses (one sentence)</th><th>Evidence</th></tr>
+  <tr><td>MFA on every console user</td><td>A stolen password alone cannot open our AWS account.</td><td>E-12</td></tr>
+  <tr><td>One IAM user each, no shared admin, admin via role</td><td>Every action is traceable to one person, and day-to-day logins cannot destroy the account.</td><td>E-12</td></tr>
+  <tr><td>Secrets in Parameter Store (SecureString), read at runtime</td><td>No key can leak through the repository, a screenshot or a copied config file.</td><td>E-13</td></tr>
+  <tr><td>Git history scanned (gitleaks in CI)</td><td>A key committed once and deleted later would still be found and rotated.</td><td>CI run</td></tr>
+  <tr><td>PII redaction in the gateway</td><td>Customers' phone numbers and e-mails never reach the third-party AI provider.</td><td>gateway log, <code>PiiRedacted</code> metric</td></tr>
+  <tr><td>Security group: port 80 from CloudFront only, no SSH</td><td>Nobody can reach the server, the database or a login prompt directly from the internet.</td><td>SG rules</td></tr>
+  <tr><td>MongoDB with a password, not published to the host</td><td>The database is unreachable from outside the Docker network and useless without credentials.</td><td>compose file</td></tr>
+  <tr><td>Least-privilege instance role and GitHub OIDC role</td><td>A compromised server or CI job can touch only our bucket prefixes and parameters, with no long-lived keys.</td><td>IAM policy</td></tr>
+  <tr><td>Gemini key restricted and dated</td><td>A leaked model key works only for the Generative Language API and only until it expires.</td><td><span class="todo">screenshot (blurred)</span></td></tr>
+  <tr><td>CloudTrail trail</td><td>We can see who changed what, and when, during an incident.</td><td>trail status</td></tr>
+  <tr><td>Encryption at rest (EBS, S3) and HTTPS (S)</td><td>Disks, backups and traffic are unreadable if copied.</td><td>describe-volumes</td></tr>
+  <tr><td>GuardDuty (S)</td><td>Suspicious activity such as crypto-mining or credential misuse is flagged.</td><td><span class="todo">findings: none / explained</span></td></tr>
+  <tr><td>Registration closed, per-user rate limits</td><td>Strangers cannot sign up and burn the free model quota.</td><td>.env settings</td></tr>
+</table>
+<div class="evidence-needed" data-id="E-12">IAM users list and credential report showing mfa_active=true for both of you (blur the account ID if you like).</div>
+<div class="evidence-needed" data-id="E-13">Parameter Store list of /suki/prod names and types (SecureString) — never the values.</div>
+<h3>Before and after</h3>
+<table>
+  <tr><th>Problem found</th><th>Before</th><th>After</th></tr>
+  <tr><td>Database authentication</td><td><code>--noauth</code></td><td>root user + password from Parameter Store, internal network only</td></tr>
+  <tr><td>Secrets</td><td>plain <code>.env</code> in the project folder</td><td>Parameter Store; <code>.env</code> generated at deploy, root-only, git-ignored</td></tr>
+  <tr><td>Transport</td><td>HTTP</td><td>HTTPS (CloudFront)</td></tr>
+  <tr><td>Exposure</td><td>app port open</td><td>CloudFront-only security group, no SSH</td></tr>
+  <tr><td>Registration</td><td>open</td><td>closed; accounts created by us</td></tr>
+  <tr><td>Personal data to AI provider</td><td>sent as typed</td><td>phones/e-mails removed first</td></tr>
+  <tr><td>Audit</td><td>none</td><td>CloudTrail + GuardDuty</td></tr>
+</table>
+
+</main>
+<footer class="site">Suki — Suklay &amp; Kulay salon assistant · SAM10 Systems Administration and Maintenance final project ·
+Jansdale S. Yusi &amp; Rhea Angeline G. Manipon · Built on <a href="https://github.com/danny-avila/LibreChat">LibreChat</a> (MIT) ·
+Suklay &amp; Kulay is a fictional business; all salon data is invented.</footer>
+</body>
+</html>

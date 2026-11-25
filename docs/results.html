@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Results · Suki — SAM10 final project</title>
+<link rel="icon" href="assets/logo.svg">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="site"><div class="wrap">
+<a class="brand" href="index.html"><img src="assets/logo.svg" alt="">Suki · SAM10</a>
+<nav class="pages"><a href="index.html">Summary</a><a href="infrastructure.html">AWS design</a><a href="system.html">System card</a><a href="baseline.html">Baseline</a><a href="well-architected.html">Well-Architected</a><a href="operations.html">Monitoring · Backup · Security</a><a href="automation-incident.html">Automation · Incident</a><a href="results.html" class=on>Results</a><a href="next-steps.html">Next steps</a><a href="declaration.html">Declaration</a></nav>
+</div></header>
+<main class="wrap">
+
+<h1>Results</h1>
+<p class="lead">Before and after, measured the same way over the same length of time. Every number has its date range.</p>
+
+<h2>Three test questions</h2>
+<p>Chosen to show Suki working and failing. Real answers from the deployed system, copied word for word.</p>
+<div class="evidence-needed" data-id="E-03">Three real Q&amp;A pairs with screenshots: e.g. one price question it gets right, one safety/refusal question, and one it gets WRONG (e.g. an arithmetic or 'not offered' question). Say why it failed.</div>
+
+<h2>How good is it? (one honest number)</h2>
+<p><strong><span class="todo">__ of 32 (__%)</span></strong> labelled questions passed on <span class="todo">date</span>, model <span class="todo">gemini-…</span>.</p>
+<p>Method: <code>ops/eval/run_eval.py</code> sends the 32 questions in <code>ops/eval/questions.json</code> through the deployed gateway
+(same knowledge base, prompt and model as the website) and checks required keywords and forbidden phrases. It runs every 12 hours; results are saved in S3 under <code>eval/</code>.</p>
+<div class="evidence-needed" data-id="E-04">Paste the summary table from the eval markdown output (by category) and link the full results file. Keep at least one failing example visible.</div>
+
+<h2>Before and after</h2>
+<p>"Before" = <span class="todo">first working deployment, dates</span>. "After" = <span class="todo">after monitoring, fixes and tuning, dates</span>. Same length of time on each side.</p>
+<table>
+  <tr><th>Measure</th><th>How measured</th><th>Before (dates)</th><th>After (dates)</th></tr>
+  <tr><td>Availability</td><td>HealthCheckOK average over the period</td><td><span class="todo"></span></td><td><span class="todo"></span></td></tr>
+  <tr><td>Answer time</td><td>AnswerLatencyMs average and p90</td><td><span class="todo"></span></td><td><span class="todo"></span></td></tr>
+  <tr><td>Error rate</td><td>AnswersFailed / AnswersTotal; Http5xx</td><td><span class="todo"></span></td><td><span class="todo"></span></td></tr>
+  <tr><td>Answer quality</td><td>Scheduled test pass rate</td><td><span class="todo"></span></td><td><span class="todo"></span></td></tr>
+  <tr><td>CPU / memory</td><td>CPUUtilization avg; mem_used_percent avg</td><td><span class="todo"></span></td><td><span class="todo"></span></td></tr>
+  <tr><td>Disk used</td><td>disk_used_percent max</td><td><span class="todo"></span></td><td><span class="todo"></span></td></tr>
+  <tr><td>Time to detect / fix</td><td>Incident page</td><td>not measurable (no alerts)</td><td><span class="todo"></span></td></tr>
+  <tr><td>Monthly cost</td><td>Billing / Cost Explorer, incl. AI cost (free tier: ₱0)</td><td><span class="todo"></span></td><td><span class="todo"></span></td></tr>
+</table>
+<div class="evidence-needed" data-id="Graph">At least one graph: e.g. a CloudWatch screenshot of AnswerLatencyMs or the eval pass rate across both periods, with the date range in the caption.</div>
+<div class="evidence-needed" data-id="E-16">Cost before and after: AWS Billing / Cost Explorer screenshot with dates (filter by tag Project=SAM10 if tags are active).</div>
+
+</main>
+<footer class="site">Suki — Suklay &amp; Kulay salon assistant · SAM10 Systems Administration and Maintenance final project ·
+Jansdale S. Yusi &amp; Rhea Angeline G. Manipon · Built on <a href="https://github.com/danny-avila/LibreChat">LibreChat</a> (MIT) ·
+Suklay &amp; Kulay is a fictional business; all salon data is invented.</footer>
+</body>
+</html>

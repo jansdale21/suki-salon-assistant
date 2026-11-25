@@ -1,0 +1,892 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Suki (Suklay & Kulay salon assistant) - SAM10 final project. One region, one EC2 instance running
+  LibreChat + MongoDB + Suki gateway in Docker, behind CloudFront (HTTPS). S3 content and backups,
+  Parameter Store secrets, CloudWatch logs/metrics/alarms/dashboard, SNS e-mail alerts, AWS Budget,
+  CloudTrail, GuardDuty and a scheduled health-check Lambda.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: { default: Project }
+        Parameters: [AlertEmail, TeamTag, MonthlyBudgetUSD]
+      - Label: { default: Network and compute }
+        Parameters: [VpcId, SubnetId, CloudFrontPrefixListId, InstanceType, LatestAmiId]
+      - Label: { default: Code }
+        Parameters: [GitRepoUrl, GitBranch, GitHubRepo, CreateGitHubOidcProvider]
+      - Label: { default: Optional security }
+        Parameters: [EnableGuardDuty]
+
+Parameters:
+  AlertEmail:
+    Type: String
+    Description: Real inbox that receives every alarm and budget alert (confirm the SNS e-mail!)
+    AllowedPattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+  TeamTag:
+    Type: String
+    Default: Yusi-Manipon
+    Description: Value for the Team tag (cost tracking)
+  MonthlyBudgetUSD:
+    Type: Number
+    Default: 30
+    Description: Monthly cost alert in USD (t3.small 24/7 + IPv4 + metrics is roughly US$25-30)
+    MinValue: 1
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC to use (the default VPC is fine)
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: A PUBLIC subnet in that VPC (auto-assign public IP not required; an Elastic IP is attached)
+  CloudFrontPrefixListId:
+    Type: String
+    Description: >-
+      ID of the managed prefix list com.amazonaws.global.cloudfront.origin-facing in this region (pl-...).
+      deploy-stack.sh looks it up for you.
+    AllowedPattern: '^pl-[0-9a-f]+$'
+  InstanceType:
+    Type: String
+    Default: t3.small
+    AllowedValues: [t3.small, t3.medium, t3a.small, t3a.medium]
+    Description: t3.small (2 GiB + swap) is enough for LibreChat + MongoDB without search/RAG
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+  GitRepoUrl:
+    Type: String
+    Description: HTTPS clone URL of YOUR public repository (e.g. https://github.com/you/suki-salon-assistant.git)
+  GitBranch:
+    Type: String
+    Default: main
+  GitHubRepo:
+    Type: String
+    Default: ''
+    Description: Optional "owner/repo" for automatic deploys from GitHub Actions (S-band). Leave empty to skip.
+  CreateGitHubOidcProvider:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Set false if your account already has the token.actions.githubusercontent.com OIDC provider
+  EnableGuardDuty:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Set false if GuardDuty is already enabled in this region (the stack would otherwise fail)
+
+Conditions:
+  IsUsEast1: !Equals [!Ref 'AWS::Region', us-east-1]
+  HasGitHubRepo: !Not [!Equals [!Ref GitHubRepo, '']]
+  CreateOidc: !And [!Condition HasGitHubRepo, !Equals [!Ref CreateGitHubOidcProvider, 'true']]
+  CreateGuardDuty: !Equals [!Ref EnableGuardDuty, 'true']
+
+Resources:
+  # ------------------------------------------------------------------ storage
+  ContentBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain          # keep backups if the stack is deleted by mistake
+    UpdateReplacePolicy: Retain
+    Properties:
+      VersioningConfiguration: { Status: Enabled }
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
+      LifecycleConfiguration:
+        Rules:
+          - Id: backups-keep-14-days
+            Status: Enabled
+            Prefix: backups/
+            ExpirationInDays: 14
+            NoncurrentVersionExpiration: { NoncurrentDays: 7 }
+          - Id: eval-results-90-days
+            Status: Enabled
+            Prefix: eval/
+            ExpirationInDays: 90
+          - Id: old-content-versions-60-days
+            Status: Enabled
+            Prefix: content/
+            NoncurrentVersionExpiration: { NoncurrentDays: 60 }
+
+  ContentBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ContentBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource: [!GetAtt ContentBucket.Arn, !Sub '${ContentBucket.Arn}/*']
+            Condition: { Bool: { 'aws:SecureTransport': 'false' } }
+
+  # ------------------------------------------------------------------ alerts
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Suki alerts
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlertEmail
+
+  AlertTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics: [!Ref AlertTopic]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudWatchAlarms
+            Effect: Allow
+            Principal: { Service: cloudwatch.amazonaws.com }
+            Action: sns:Publish
+            Resource: !Ref AlertTopic
+            Condition: { StringEquals: { 'aws:SourceAccount': !Ref 'AWS::AccountId' } }
+
+  MonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub '${AWS::StackName}-monthly'
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit: { Amount: !Ref MonthlyBudgetUSD, Unit: USD }
+      NotificationsWithSubscribers:
+        - Notification: { NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 50, ThresholdType: PERCENTAGE }
+          Subscribers: [{ SubscriptionType: EMAIL, Address: !Ref AlertEmail }]
+        - Notification: { NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 80, ThresholdType: PERCENTAGE }
+          Subscribers: [{ SubscriptionType: EMAIL, Address: !Ref AlertEmail }]
+        - Notification: { NotificationType: FORECASTED, ComparisonOperator: GREATER_THAN, Threshold: 100, ThresholdType: PERCENTAGE }
+          Subscribers: [{ SubscriptionType: EMAIL, Address: !Ref AlertEmail }]
+
+  # ------------------------------------------------------------------ logs
+  AppLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: { LogGroupName: /suki/app, RetentionInDays: 30 }
+  NginxLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: { LogGroupName: /suki/nginx, RetentionInDays: 30 }
+  MongoLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: { LogGroupName: /suki/mongodb, RetentionInDays: 14 }
+  GatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: { LogGroupName: /suki/gateway, RetentionInDays: 30 }
+  AutomationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: { LogGroupName: /suki/automation, RetentionInDays: 90 }
+  HealthCheckLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: { LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-healthcheck', RetentionInDays: 30 }
+
+  # Gateway log lines -> product metrics (namespace Suki)
+  MfAnswersTotal:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref GatewayLogGroup
+      FilterPattern: '{ $.event = "chat" && $.kind = "chat" }'
+      MetricTransformations: [{ MetricNamespace: Suki, MetricName: AnswersTotal, MetricValue: '1' }]
+  MfAnswersFailed:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref GatewayLogGroup
+      FilterPattern: '{ $.event = "chat" && $.kind = "chat" && $.success IS FALSE }'
+      MetricTransformations: [{ MetricNamespace: Suki, MetricName: AnswersFailed, MetricValue: '1', DefaultValue: 0 }]
+  MfEmptyAnswer:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref GatewayLogGroup
+      FilterPattern: '{ $.event = "chat" && $.kind = "chat" && $.empty IS TRUE }'
+      MetricTransformations: [{ MetricNamespace: Suki, MetricName: EmptyAnswer, MetricValue: '1', DefaultValue: 0 }]
+  MfAnswerLatency:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref GatewayLogGroup
+      FilterPattern: '{ $.event = "chat" && $.kind = "chat" && $.success IS TRUE }'
+      MetricTransformations: [{ MetricNamespace: Suki, MetricName: AnswerLatencyMs, MetricValue: '$.latency_ms', Unit: Milliseconds }]
+  MfPiiRedacted:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref GatewayLogGroup
+      FilterPattern: '{ $.event = "chat" && $.pii_redacted > 0 }'
+      MetricTransformations: [{ MetricNamespace: Suki, MetricName: PiiRedacted, MetricValue: '$.pii_redacted' }]
+  MfUpstream429:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref GatewayLogGroup
+      FilterPattern: '{ $.event = "chat" && $.upstream_status = 429 }'
+      MetricTransformations: [{ MetricNamespace: Suki, MetricName: ModelRateLimited, MetricValue: '1' }]
+  MfKnowledgeError:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref GatewayLogGroup
+      FilterPattern: '{ $.event = "knowledge_error" }'
+      MetricTransformations: [{ MetricNamespace: Suki, MetricName: KnowledgeErrors, MetricValue: '1' }]
+  # nginx access log -> HTTP metrics
+  MfHttpRequests:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref NginxLogGroup
+      FilterPattern: '{ $.status > 0 }'
+      MetricTransformations: [{ MetricNamespace: Suki, MetricName: HttpRequests, MetricValue: '1' }]
+  MfHttp5xx:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref NginxLogGroup
+      FilterPattern: '{ $.status >= 500 }'
+      MetricTransformations: [{ MetricNamespace: Suki, MetricName: Http5xx, MetricValue: '1', DefaultValue: 0 }]
+  MfHttpResponseTime:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref NginxLogGroup
+      FilterPattern: '{ $.status > 0 && $.stream = 0 }'
+      MetricTransformations: [{ MetricNamespace: Suki, MetricName: HttpResponseTime, MetricValue: '$.request_time', Unit: Seconds }]
+
+  # ------------------------------------------------------------------ IAM for the instance
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore     # Session Manager instead of SSH
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy      # agent metrics + docker awslogs
+      Policies:
+        - PolicyName: suki-least-privilege
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadOwnParameters
+                Effect: Allow
+                Action: [ssm:GetParameter, ssm:GetParameters, ssm:GetParametersByPath]
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/suki/prod*'
+              - Sid: ListBucket
+                Effect: Allow
+                Action: [s3:ListBucket, s3:ListBucketVersions]
+                Resource: !GetAtt ContentBucket.Arn
+              - Sid: ReadContent
+                Effect: Allow
+                Action: [s3:GetObject, s3:GetObjectVersion]
+                Resource: !Sub '${ContentBucket.Arn}/content/*'
+              - Sid: SeedContentOnFirstBoot
+                Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub '${ContentBucket.Arn}/content/*'
+              - Sid: BackupsAndEvalResults
+                Effect: Allow
+                Action: [s3:PutObject, s3:GetObject, s3:GetObjectVersion]
+                Resource: [!Sub '${ContentBucket.Arn}/backups/*', !Sub '${ContentBucket.Arn}/eval/*']
+              - Sid: CustomMetrics
+                Effect: Allow
+                Action: cloudwatch:PutMetricData
+                Resource: '*'
+                Condition: { StringEquals: { 'cloudwatch:namespace': [Suki, CWAgent] } }
+              - Sid: NotifyTeam
+                Effect: Allow
+                Action: sns:Publish
+                Resource: !Ref AlertTopic
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: { Roles: [!Ref InstanceRole] }
+
+  # ------------------------------------------------------------------ network + compute
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Suki - HTTP only from CloudFront edge; no SSH (use Session Manager)
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourcePrefixListId: !Ref CloudFrontPrefixListId
+          Description: CloudFront origin-facing servers only
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS out (Gemini API, AWS APIs, image pulls, git)
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: HTTP out (OS package mirrors)
+
+  ElasticIp:
+    Type: AWS::EC2::EIP
+    Properties: { Domain: vpc }
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: Suki salon assistant (HTTPS front door)
+        Enabled: true
+        HttpVersion: http2and3
+        PriceClass: PriceClass_200
+        Origins:
+          - Id: suki-ec2
+            DomainName: !If
+              - IsUsEast1
+              - !Sub ['ec2-${D}.compute-1.amazonaws.com', { D: !Join ['-', !Split ['.', !Ref ElasticIp]] }]
+              - !Sub ['ec2-${D}.${AWS::Region}.compute.amazonaws.com', { D: !Join ['-', !Split ['.', !Ref ElasticIp]] }]
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+              OriginReadTimeout: 60
+              OriginKeepaliveTimeout: 5
+        DefaultCacheBehavior:
+          TargetOriginId: suki-ec2
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad          # Managed-CachingDisabled
+          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3  # Managed-AllViewer
+        CacheBehaviors:
+          - PathPattern: /assets/*
+            TargetOriginId: suki-ec2
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            Compress: true
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6        # Managed-CachingOptimized
+        ViewerCertificate: { CloudFrontDefaultCertificate: true }
+
+  PublicUrlParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /suki/prod/PUBLIC_URL
+      Type: String
+      Value: !Sub 'https://${Distribution.DomainName}'
+  BucketParam:
+    Type: AWS::SSM::Parameter
+    Properties: { Name: /suki/prod/CONTENT_BUCKET, Type: String, Value: !Ref ContentBucket }
+  TopicParam:
+    Type: AWS::SSM::Parameter
+    Properties: { Name: /suki/prod/ALERT_TOPIC_ARN, Type: String, Value: !Ref AlertTopic }
+  ModelParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /suki/prod/GEMINI_MODEL
+      Type: String
+      Value: gemini-2.5-flash
+      Description: Gemini model behind the suki-salon alias. Change here, no redeploy needed (gateway restart).
+
+  AppInstance:
+    Type: AWS::EC2::Instance
+    DependsOn: [PublicUrlParam, BucketParam, TopicParam, ModelParam, GatewayLogGroup, AppLogGroup, NginxLogGroup, MongoLogGroup, AutomationLogGroup]
+    Properties:
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds: [!Ref AppSecurityGroup]
+      Monitoring: false
+      MetadataOptions:
+        HttpTokens: required          # IMDSv2 only
+        HttpPutResponseHopLimit: 2    # containers (gateway) can reach the instance role
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs: { VolumeSize: 20, VolumeType: gp3, Encrypted: true, DeleteOnTermination: true }
+      Tags:
+        - { Key: Name, Value: !Sub '${AWS::StackName}-app' }
+        - { Key: Team, Value: !Ref TeamTag }
+        - { Key: Project, Value: SAM10 }
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euxo pipefail
+          exec > >(tee -a /var/log/suki-userdata.log) 2>&1
+          # Wait until the Elastic IP is attached, so the public address does not change mid-install.
+          for i in $(seq 1 120); do
+            T=$(curl -s -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 60" http://169.254.169.254/latest/api/token)
+            [ "$(curl -s -H "X-aws-ec2-metadata-token: $T" http://169.254.169.254/latest/meta-data/public-ipv4)" = "${ElasticIp}" ] && break
+            sleep 5
+          done
+          dnf install -y docker git jq amazon-cloudwatch-agent
+          mkdir -p /usr/local/lib/docker/cli-plugins
+          curl -fsSL https://github.com/docker/compose/releases/download/v2.39.1/docker-compose-linux-x86_64 \
+            -o /usr/local/lib/docker/cli-plugins/docker-compose \
+          || curl -fsSL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
+            -o /usr/local/lib/docker/cli-plugins/docker-compose
+          chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+          systemctl enable --now docker
+          cat > /etc/suki.env <<EOF
+          AWS_REGION=${AWS::Region}
+          AWS_DEFAULT_REGION=${AWS::Region}
+          PARAM_PREFIX=/suki/prod
+          CONTENT_BUCKET=${ContentBucket}
+          ALERT_TOPIC_ARN=${AlertTopic}
+          SUKI_HOME=/opt/suki
+          EOF
+          sed -i 's/^ *//' /etc/suki.env
+          git clone --branch ${GitBranch} ${GitRepoUrl} /opt/suki
+          bash /opt/suki/infra/scripts/bootstrap-instance.sh
+
+  EipAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt ElasticIp.AllocationId
+      InstanceId: !Ref AppInstance
+
+  # ------------------------------------------------------------------ scheduled health check (automation #1)
+  HealthCheckRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: healthcheck
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt HealthCheckLogGroup.Arn
+              - Effect: Allow
+                Action: cloudwatch:PutMetricData
+                Resource: '*'
+                Condition: { StringEquals: { 'cloudwatch:namespace': Suki } }
+
+  HealthCheckFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: HealthCheckLogGroup
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-healthcheck'
+      Description: Every 5 minutes, checks Suki through CloudFront and publishes Suki/HealthCheckOK
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 20
+      MemorySize: 128
+      Role: !GetAtt HealthCheckRole.Arn
+      Environment:
+        Variables:
+          TARGET_URL: !Sub 'https://${Distribution.DomainName}/health'
+      Code:
+        ZipFile: |
+          import json, os, time, urllib.request
+          import boto3
+          cw = boto3.client("cloudwatch")
+          def handler(event, context):
+              url = os.environ["TARGET_URL"]
+              start = time.time(); ok = 0; status = None; err = None
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "suki-healthcheck"}), timeout=10) as r:
+                      status = r.status
+                      body = r.read(200).decode(errors="replace")
+                      ok = 1 if (status == 200 and "OK" in body) else 0
+              except Exception as e:
+                  err = f"{type(e).__name__}: {e}"[:200]
+              ms = int((time.time() - start) * 1000)
+              cw.put_metric_data(Namespace="Suki", MetricData=[
+                  {"MetricName": "HealthCheckOK", "Value": ok, "Unit": "Count"},
+                  {"MetricName": "HealthCheckLatencyMs", "Value": ms, "Unit": "Milliseconds"}])
+              print(json.dumps({"event": "healthcheck", "ok": bool(ok), "status": status, "latency_ms": ms, "error": err, "url": url}))
+              return {"ok": bool(ok), "status": status, "latency_ms": ms}
+
+  HealthCheckSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Run the Suki health check every 5 minutes
+      ScheduleExpression: rate(5 minutes)
+      State: ENABLED
+      Targets:
+        - Id: healthcheck
+          Arn: !GetAtt HealthCheckFunction.Arn
+
+  HealthCheckPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref HealthCheckFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt HealthCheckSchedule.Arn
+
+  # ------------------------------------------------------------------ alarms (all e-mail the team)
+  AlarmCpuHigh:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: suki-ec2-cpu-high
+      AlarmDescription: CPU above 85% for 10 minutes - look for a stuck process or runaway loop (top).
+      Namespace: AWS/EC2
+      MetricName: CPUUtilization
+      Dimensions: [{ Name: InstanceId, Value: !Ref AppInstance }]
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 85
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+
+  AlarmStatusCheck:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: suki-ec2-status-check-failed
+      AlarmDescription: EC2 status check failing for 2 minutes - the instance or its host is unhealthy.
+      Namespace: AWS/EC2
+      MetricName: StatusCheckFailed
+      Dimensions: [{ Name: InstanceId, Value: !Ref AppInstance }]
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+
+  AlarmDiskHigh:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: suki-ec2-disk-used-high
+      AlarmDescription: Root disk above 85% for 10 minutes - clean up (see the disk-full runbook) or grow the volume.
+      Namespace: CWAgent
+      MetricName: disk_used_percent
+      Dimensions:
+        - { Name: InstanceId, Value: !Ref AppInstance }
+        - { Name: path, Value: / }
+        - { Name: fstype, Value: xfs }
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 85
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+
+  AlarmMemoryHigh:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: suki-ec2-memory-high
+      AlarmDescription: Memory above 90% for 5 minutes - a container may be OOM-killed soon (free -m, dmesg).
+      Namespace: CWAgent
+      MetricName: mem_used_percent
+      Dimensions: [{ Name: InstanceId, Value: !Ref AppInstance }]
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 90
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+
+  AlarmHttp5xx:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: suki-http-5xx
+      AlarmDescription: Any 5xx from the web tier within a minute - users are seeing errors.
+      Namespace: Suki
+      MetricName: Http5xx
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+
+  AlarmSlowPages:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: suki-http-slow
+      AlarmDescription: 90% of non-streaming requests slower than 3 s over 5 minutes - the site feels slow.
+      Namespace: Suki
+      MetricName: HttpResponseTime
+      ExtendedStatistic: p90
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+
+  AlarmAnswersFailing:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: suki-answers-failed-rate
+      AlarmDescription: More than 5% of chat answers failed in 15 minutes - the system is up but not useful.
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+      Metrics:
+        - Id: failed
+          ReturnData: false
+          MetricStat:
+            Metric: { Namespace: Suki, MetricName: AnswersFailed }
+            Period: 900
+            Stat: Sum
+        - Id: total
+          ReturnData: false
+          MetricStat:
+            Metric: { Namespace: Suki, MetricName: AnswersTotal }
+            Period: 900
+            Stat: Sum
+        - Id: failedpct
+          Label: Failed answers (%)
+          Expression: 'IF(total > 0, 100 * failed / total, 0)'
+          ReturnData: true
+
+  AlarmEmptyAnswer:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: suki-empty-answer
+      AlarmDescription: An empty answer in the last 30 minutes - salon content may be missing or unreadable.
+      Namespace: Suki
+      MetricName: EmptyAnswer
+      Statistic: Sum
+      Period: 1800
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+
+  AlarmModelSlow:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: suki-model-latency-high
+      AlarmDescription: Average full-answer time above 15 s over 15 minutes - Gemini is slow or overloaded.
+      Namespace: Suki
+      MetricName: AnswerLatencyMs
+      Statistic: Average
+      Period: 900
+      EvaluationPeriods: 1
+      Threshold: 15000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+
+  AlarmModelRateLimited:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: suki-model-rate-limited
+      AlarmDescription: 3+ HTTP 429 responses from Gemini in 15 minutes - free-tier quota reached.
+      Namespace: Suki
+      MetricName: ModelRateLimited
+      Statistic: Sum
+      Period: 900
+      EvaluationPeriods: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  AlarmHealthCheck:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: suki-healthcheck-failed
+      AlarmDescription: The public URL failed two 5-minute health checks in a row (or checks stopped arriving).
+      Namespace: Suki
+      MetricName: HealthCheckOK
+      Statistic: Minimum
+      Period: 300
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+
+  AlarmBackupMissing:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: suki-backup-missing
+      AlarmDescription: No successful database backup in the last 24 hours (it runs every 6 hours).
+      Namespace: Suki
+      MetricName: BackupSucceeded
+      Statistic: Sum
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+
+  # ------------------------------------------------------------------ dashboard
+  Dashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: Suki-Operations
+      DashboardBody: !Sub
+        - |
+          {
+            "start": "-PT24H",
+            "widgets": [
+              {"type":"text","x":0,"y":0,"width":24,"height":2,"properties":{"markdown":"## Suki — Suklay & Kulay salon assistant\nRequests, errors and response time come from nginx and gateway logs; CPU, memory and disk from EC2 and the CloudWatch agent. Thresholds follow the SAM10 starter alarm set; see the project website for the reasons."}},
+              {"type":"metric","x":0,"y":2,"width":8,"height":6,"properties":{"title":"Request count (HTTP and chat answers)","region":"${AWS::Region}","stat":"Sum","period":300,"view":"timeSeries","metrics":[["Suki","HttpRequests",{"label":"HTTP requests"}],["Suki","AnswersTotal",{"label":"Chat answers"}]]}},
+              {"type":"metric","x":8,"y":2,"width":8,"height":6,"properties":{"title":"Error count","region":"${AWS::Region}","stat":"Sum","period":300,"view":"timeSeries","metrics":[["Suki","Http5xx",{"label":"HTTP 5xx"}],["Suki","AnswersFailed",{"label":"Failed answers"}],["Suki","EmptyAnswer",{"label":"Empty answers"}],["Suki","ModelRateLimited",{"label":"Gemini 429"}]]}},
+              {"type":"metric","x":16,"y":2,"width":8,"height":6,"properties":{"title":"Response time","region":"${AWS::Region}","period":300,"view":"timeSeries","metrics":[["Suki","AnswerLatencyMs",{"stat":"Average","label":"Full answer (ms, avg)"}],["Suki","AnswerLatencyMs",{"stat":"p90","label":"Full answer (ms, p90)"}],["Suki","HttpResponseTime",{"stat":"p90","label":"Page/API p90 (s)","yAxis":"right"}]]}},
+              {"type":"metric","x":0,"y":8,"width":8,"height":6,"properties":{"title":"CPU utilisation (%)","region":"${AWS::Region}","stat":"Average","period":300,"view":"timeSeries","yAxis":{"left":{"min":0,"max":100}},"metrics":[["AWS/EC2","CPUUtilization","InstanceId","${Instance}"]],"annotations":{"horizontal":[{"value":85,"label":"alarm"}]}}},
+              {"type":"metric","x":8,"y":8,"width":8,"height":6,"properties":{"title":"Disk space used (%)","region":"${AWS::Region}","stat":"Maximum","period":300,"view":"timeSeries","yAxis":{"left":{"min":0,"max":100}},"metrics":[["CWAgent","disk_used_percent","InstanceId","${Instance}","path","/","fstype","xfs"]],"annotations":{"horizontal":[{"value":85,"label":"alarm"}]}}},
+              {"type":"metric","x":16,"y":8,"width":8,"height":6,"properties":{"title":"Memory used (%)","region":"${AWS::Region}","stat":"Average","period":300,"view":"timeSeries","yAxis":{"left":{"min":0,"max":100}},"metrics":[["CWAgent","mem_used_percent","InstanceId","${Instance}"]],"annotations":{"horizontal":[{"value":90,"label":"alarm"}]}}},
+              {"type":"metric","x":0,"y":14,"width":8,"height":6,"properties":{"title":"Health check through CloudFront (1 = OK)","region":"${AWS::Region}","stat":"Minimum","period":300,"view":"timeSeries","metrics":[["Suki","HealthCheckOK"]]}},
+              {"type":"metric","x":8,"y":14,"width":8,"height":6,"properties":{"title":"Backups and eval","region":"${AWS::Region}","period":86400,"view":"bar","metrics":[["Suki","BackupSucceeded",{"stat":"Sum","label":"Backups OK"}],["Suki","EvalPassRate",{"stat":"Maximum","label":"Eval pass rate (%)","yAxis":"right"}]]}},
+              {"type":"alarm","x":16,"y":14,"width":8,"height":6,"properties":{"title":"Alarms","alarms":[${AlarmList}]}}
+            ]
+          }
+        - Instance: !Ref AppInstance
+          AlarmList: !Join
+            - ','
+            - - !Sub '"${AlarmCpuHigh.Arn}"'
+              - !Sub '"${AlarmStatusCheck.Arn}"'
+              - !Sub '"${AlarmDiskHigh.Arn}"'
+              - !Sub '"${AlarmMemoryHigh.Arn}"'
+              - !Sub '"${AlarmHttp5xx.Arn}"'
+              - !Sub '"${AlarmSlowPages.Arn}"'
+              - !Sub '"${AlarmAnswersFailing.Arn}"'
+              - !Sub '"${AlarmEmptyAnswer.Arn}"'
+              - !Sub '"${AlarmHealthCheck.Arn}"'
+              - !Sub '"${AlarmBackupMissing.Arn}"'
+
+  # ------------------------------------------------------------------ audit + threat detection
+  TrailBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules: [{ Id: expire-90-days, Status: Enabled, ExpirationInDays: 90 }]
+
+  TrailBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TrailBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AclCheck
+            Effect: Allow
+            Principal: { Service: cloudtrail.amazonaws.com }
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt TrailBucket.Arn
+            Condition: { StringEquals: { 'aws:SourceArn': !Sub 'arn:aws:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/${AWS::StackName}-trail' } }
+          - Sid: Write
+            Effect: Allow
+            Principal: { Service: cloudtrail.amazonaws.com }
+            Action: s3:PutObject
+            Resource: !Sub '${TrailBucket.Arn}/AWSLogs/${AWS::AccountId}/*'
+            Condition:
+              StringEquals:
+                's3:x-amz-acl': bucket-owner-full-control
+                'aws:SourceArn': !Sub 'arn:aws:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/${AWS::StackName}-trail'
+
+  Trail:
+    Type: AWS::CloudTrail::Trail
+    DependsOn: TrailBucketPolicy
+    Properties:
+      TrailName: !Sub '${AWS::StackName}-trail'
+      S3BucketName: !Ref TrailBucket
+      IsLogging: true
+      IsMultiRegionTrail: false
+      IncludeGlobalServiceEvents: true
+      EnableLogFileValidation: true
+
+  GuardDutyDetector:
+    Type: AWS::GuardDuty::Detector
+    Condition: CreateGuardDuty
+    Properties:
+      Enable: true
+      FindingPublishingFrequency: SIX_HOURS
+
+  # ------------------------------------------------------------------ deploy from GitHub (S-band, optional)
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateOidc
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      ThumbprintList: [6938fd4d98bab03faadb97b34396831e3780aea1, 1c58a3a8518e8759bf075b76b750d4f2df264fcd]
+
+  GitHubDeployRole:
+    Type: AWS::IAM::Role
+    Condition: HasGitHubRepo
+    Properties:
+      Description: Assumed by GitHub Actions (main branch only) to upload content and trigger a redeploy
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub 'arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                'token.actions.githubusercontent.com:aud': sts.amazonaws.com
+                'token.actions.githubusercontent.com:sub': !Sub 'repo:${GitHubRepo}:ref:refs/heads/${GitBranch}'
+      Policies:
+        - PolicyName: deploy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt ContentBucket.Arn
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub '${ContentBucket.Arn}/content/*'
+              - Effect: Allow
+                Action: ssm:SendCommand
+                Resource:
+                  - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/${AppInstance}'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}::document/AWS-RunShellScript'
+              - Effect: Allow
+                Action: [ssm:GetCommandInvocation, ssm:ListCommandInvocations]
+                Resource: '*'
+
+Outputs:
+  PublicUrl:
+    Description: Open this in a browser (HTTPS via CloudFront)
+    Value: !Sub 'https://${Distribution.DomainName}'
+  InstanceId:
+    Value: !Ref AppInstance
+  ContentBucketName:
+    Value: !Ref ContentBucket
+  AlertTopicArn:
+    Value: !Ref AlertTopic
+  DashboardUrl:
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=Suki-Operations'
+  SessionManagerCommand:
+    Description: Shell on the instance without SSH
+    Value: !Sub 'aws ssm start-session --target ${AppInstance} --region ${AWS::Region}'
+  GitHubDeployRoleArn:
+    Condition: HasGitHubRepo
+    Description: Put this in the GitHub repository variable AWS_DEPLOY_ROLE_ARN
+    Value: !GetAtt GitHubDeployRole.Arn

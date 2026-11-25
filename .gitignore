@@ -1,0 +1,13 @@
+# secrets and local state: never commit
+app/.env
+app/.env.*
+!app/.env.local.example
+app/data/
+*.pem
+*.key
+gitleaks-report.json
+# generated
+ops/eval/results/
+__pycache__/
+.pytest_cache/
+.DS_Store

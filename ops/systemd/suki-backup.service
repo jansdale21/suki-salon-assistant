@@ -1,0 +1,9 @@
+[Unit]
+Description=Suki MongoDB + config backup to S3 (every 6 h)
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/suki.env
+ExecStart=/bin/bash /opt/suki/ops/backup/backup.sh

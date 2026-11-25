@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Well-Architected review · Suki — SAM10 final project</title>
+<link rel="icon" href="assets/logo.svg">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="site"><div class="wrap">
+<a class="brand" href="index.html"><img src="assets/logo.svg" alt="">Suki · SAM10</a>
+<nav class="pages"><a href="index.html">Summary</a><a href="infrastructure.html">AWS design</a><a href="system.html">System card</a><a href="baseline.html">Baseline</a><a href="well-architected.html" class=on>Well-Architected</a><a href="operations.html">Monitoring · Backup · Security</a><a href="automation-incident.html">Automation · Incident</a><a href="results.html">Results</a><a href="next-steps.html">Next steps</a><a href="declaration.html">Declaration</a></nav>
+</div></header>
+<main class="wrap">
+
+<h1>Well-Architected review</h1>
+<p class="lead">Our setup measured against the six pillars of the AWS Well-Architected Framework: first when the deployment first worked, and again after the incident.</p>
+<p>Verdicts: <span class="good">good</span> · <span class="adequate">adequate</span> · <span class="gap">gap</span>.
+<span class="todo">Optional: record the same answers in the AWS Well-Architected Tool and link its report here.</span></p>
+
+<div class="draft">The "framework asks" lines summarise the framework. The "our system" lines describe what the template and scripts
+<em>configure</em>. Confirm each one in the console, add evidence links, and set the verdicts yourselves.</div>
+
+<h2>1. Operational Excellence</h2>
+<p><strong>Framework asks:</strong> run and monitor the workload, make small reversible changes through code, learn from failures.</p>
+<p><strong>Our system:</strong> the whole environment is a CloudFormation template; the app deploys from Git (by script or GitHub Actions through SSM);
+dashboard and 12 alarms; per-request structured logs; automated test run every 12 hours; one incident with a runbook.</p>
+<table><tr><th>First pass (week 2)</th><th>After WS-F</th></tr><tr><td><span class="todo">verdict + one line</span></td><td><span class="todo">verdict + one line</span></td></tr></table>
+
+<h2>2. Security</h2>
+<p><strong>Framework asks:</strong> strong identity (MFA, least privilege), protect data at rest and in transit, keep traceability, no secrets in code.</p>
+<p><strong>Our system:</strong> one IAM user each with MFA; instance and deploy roles scoped to our bucket prefixes and parameters; secrets in Parameter Store;
+EBS and S3 encrypted; HTTPS at CloudFront; server reachable only from CloudFront, no SSH; CloudTrail and GuardDuty; PII redaction before the model.
+<em>Weakness:</em> CloudFront → EC2 hop is plain HTTP inside AWS's network.</p>
+<table><tr><th>First pass</th><th>After WS-F</th></tr><tr><td><span class="todo"></span></td><td><span class="todo"></span></td></tr></table>
+
+<h2>3. Reliability</h2>
+<p><strong>Framework asks:</strong> recover automatically from failure, test recovery, avoid single points of failure, manage quotas.</p>
+<p><strong>Our system:</strong> containers restart automatically; health check every 5 minutes; backups every 6 hours with a tested restore; rebuild from code.
+<em>But:</em> one instance in one Availability Zone and a self-managed MongoDB — a single point of failure; the free-tier model quota is a hard limit.</p>
+<table><tr><th>First pass</th><th>After WS-F</th></tr><tr><td><span class="todo"></span></td><td><span class="todo"></span></td></tr></table>
+
+<h2>4. Performance Efficiency</h2>
+<p><strong>Framework asks:</strong> choose right-sized resources, measure, and use managed services where they help.</p>
+<p><strong>Our system:</strong> t3.small chosen after removing search/RAG containers; CloudFront caches static assets; answer latency measured per request
+(<span class="todo">avg __ s, p90 __ s over dates</span>); memory headroom <span class="todo">__%</span>.</p>
+<table><tr><th>First pass</th><th>After WS-F</th></tr><tr><td><span class="todo"></span></td><td><span class="todo"></span></td></tr></table>
+
+<h2>5. Cost Optimization</h2>
+<p><strong>Framework asks:</strong> pay only for what you use, track spend, tag resources.</p>
+<p><strong>Our system:</strong> AWS Budget with e-mail alerts; all resources tagged <code>Project=SAM10</code>; free-tier model; lifecycle rules delete old backups; no load balancer or NAT gateway.
+Biggest costs: EC2 instance and the public IPv4 address. <span class="todo">US$__ per month.</span></p>
+<table><tr><th>First pass</th><th>After WS-F</th></tr><tr><td><span class="todo"></span></td><td><span class="todo"></span></td></tr></table>
+
+<h2>6. Sustainability</h2>
+<p><strong>Framework asks:</strong> minimise idle resources and over-provisioning.</p>
+<p><strong>Our system:</strong> one small burstable instance; unnecessary containers removed; old Docker images pruned on deploy; logs and backups expire automatically.
+<span class="todo">Do you stop the instance outside demo times? Say so honestly.</span></p>
+<table><tr><th>First pass</th><th>After WS-F</th></tr><tr><td><span class="todo"></span></td><td><span class="todo"></span></td></tr></table>
+
+<h2>The trade-off and the gap we would fix first</h2>
+<p class="draft">Optimised for: Operational Excellence and Security. Deliberately weaker: Reliability (single instance, single AZ).
+<strong>First gap to fix:</strong> the single instance. A daily EBS snapshot through AWS Backup (cheap) would shorten recovery from "rebuild + restore"
+to "launch from snapshot", and an Auto Scaling group of one would replace a dead instance automatically. We have not done this because
+it adds cost and complexity beyond the brief's "one or two servers".</p>
+<div class="evidence-needed" data-id="E-17">Final verdict table filled in (and, optionally, the Well-Architected Tool report link).</div>
+
+</main>
+<footer class="site">Suki — Suklay &amp; Kulay salon assistant · SAM10 Systems Administration and Maintenance final project ·
+Jansdale S. Yusi &amp; Rhea Angeline G. Manipon · Built on <a href="https://github.com/danny-avila/LibreChat">LibreChat</a> (MIT) ·
+Suklay &amp; Kulay is a fictional business; all salon data is invented.</footer>
+</body>
+</html>

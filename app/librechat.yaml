@@ -1,0 +1,121 @@
+# Suki — Suklay & Kulay salon assistant
+# LibreChat configuration (reskin). Base system: LibreChat (MIT), https://github.com/danny-avila/LibreChat
+# Docs: https://www.librechat.ai/docs/configuration/librechat_yaml
+# Written against LibreChat v0.8.9 (config version 1.3.19). If the container logs a
+# config validation error after an upgrade, compare with that release's librechat.example.yaml.
+version: 1.3.19
+cache: true
+
+interface:
+  customWelcome: "Hi! I'm Suki, the Suklay & Kulay front-desk assistant. Ask me about haircuts, colour, rebond, nails, prices, hours or booking. Please don't share personal details (phone, email, address) because I don't need them."
+  landingHeading: entity
+  mascot: false                 # remove LibreChat's own mascot (identity)
+  # Deployment-wide colour scheme (identity). RGB triplets; anything not listed falls back to defaults.
+  theme:
+    version: 1
+    name: suklay-kulay
+    modes:
+      light:
+        colors:
+          rgb-surface-submit: '107 45 92'        # plum send button
+          rgb-surface-submit-hover: '138 62 119'
+          rgb-accent-primary: '107 45 92'
+          rgb-accent-primary-hover: '138 62 119'
+          rgb-link: '160 52 104'
+          rgb-ring-primary: '224 122 155'
+          rgb-focus-outline: '224 122 155'
+          rgb-surface-primary-alt: '255 244 240'  # cream landing background
+          rgb-surface-secondary: '252 236 231'    # blush sidebar
+          rgb-header-primary: '255 244 240'
+      dark:
+        colors:
+          rgb-surface-submit: '224 122 155'      # rose send button on dark
+          rgb-surface-submit-hover: '236 150 178'
+          rgb-accent-primary: '224 122 155'
+          rgb-accent-primary-hover: '236 150 178'
+          rgb-link: '240 160 190'
+          rgb-ring-primary: '224 122 155'
+          rgb-focus-outline: '224 122 155'
+          rgb-surface-primary-alt: '38 20 34'
+          rgb-surface-secondary: '30 15 27'
+          rgb-header-primary: '38 20 34'
+  privacyPolicy:
+    externalUrl: 'https://YOUR-GITHUB-USER.github.io/suki-salon-assistant/system.html#privacy'
+    openNewTab: true
+  termsOfService:
+    modalAcceptance: true
+    modalTitle: 'Before you chat with Suki'
+    modalContent: |
+      # Suki — salon information assistant
+
+      Suki answers questions about **Suklay & Kulay Beauty Studio**, a *fictional* salon created for a
+      student project (SAM10 Systems Administration and Maintenance).
+
+      - Suki gives salon information only: services, prices, hours, booking steps, policies, aftercare tips.
+      - Suki **cannot** book or cancel appointments and **does not give medical or dermatological advice**.
+      - Do **not** type personal details (names, phone numbers, emails, addresses). Phone numbers and
+        emails are automatically removed before your message is sent to the AI model (Google Gemini).
+      - Answers can be wrong. Always confirm prices and schedules with the front desk.
+  # Keep the UI simple: one assistant, no model picking, no extra tools.
+  modelSelect: false
+  parameters: false
+  presets: false
+  prompts: false
+  bookmarks: true
+  multiConvo: false
+  agents: false
+  marketplace:
+    use: false
+  memories: false
+  webSearch: false
+  runCode: false
+  fileSearch: false
+  fileCitations: false
+  temporaryChat: true
+  feedback: true          # thumbs up/down on answers
+  sideChat: false
+  sessionRail: false
+  artifactUndocking: false
+
+registration:
+  socialLogins: []
+
+endpoints:
+  # LibreChat -> Suki gateway (on the same Docker network) -> Gemini.
+  allowedAddresses:
+    - 'gateway:8080'
+  custom:
+    - name: 'Suki'
+      apiKey: '${SUKI_GATEWAY_KEY}'      # internal token, read from Parameter Store at boot
+      baseURL: 'http://gateway:8080/v1'
+      models:
+        default: ['suki-salon']
+        fetch: false
+      titleConvo: true
+      titleModel: 'suki-title'           # the gateway routes titles without the knowledge base
+      modelDisplayLabel: 'Suki'
+      iconURL: '/assets/logo.svg'
+
+modelSpecs:
+  enforce: true
+  prioritize: true
+  list:
+    - name: 'suki'
+      label: 'Suki · Salon Assistant'
+      description: 'Ask about Suklay & Kulay services, prices, hours, booking and aftercare.'
+      default: true
+      iconURL: '/assets/logo.svg'
+      showIconInHeader: true
+      showOnLanding: true
+      hideBadgeRow: true
+      conversation_starters:
+        - 'Magkano ang women''s haircut?'
+        - 'How much is a full colour for medium-length hair?'
+        - 'Can I rebond and colour my hair on the same day?'
+        - 'Open ba kayo sa Monday?'
+      preset:
+        endpoint: 'Suki'
+        model: 'suki-salon'
+        modelLabel: 'Suki'
+        greeting: "Hello! Ako si Suki. Ano'ng gusto mong malaman tungkol sa Suklay & Kulay? 💇‍♀️💅"
+        temperature: 0.3
