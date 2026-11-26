@@ -97,7 +97,7 @@ def gateway_token() -> str | None:
 
 
 def gemini_model() -> str:
-    return settings.get("GEMINI_MODEL", env_fallback="GEMINI_MODEL", default="gemini-2.5-flash") or "gemini-2.5-flash"
+    return settings.get("GEMINI_MODEL", env_fallback="GEMINI_MODEL", default="gemini-3.8-flash") or "gemini-3.8-flash"
 
 
 # --------------------------------------------------------------------------- knowledge
