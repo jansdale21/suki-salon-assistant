@@ -18,7 +18,7 @@ SUBNET_ID="${SUBNET_ID:-$(aws ec2 describe-subnets --region "$REGION" \
 PL_ID="$(aws ec2 describe-managed-prefix-lists --region "$REGION" \
   --filters Name=prefix-list-name,Values=com.amazonaws.global.cloudfront.origin-facing \
   --query 'PrefixLists[0].PrefixListId' --output text)"
-GD_EXISTING="$(aws guardduty list-detectors --region "$REGION" --query 'length(DetectorIds)' --output text)"
+GD_EXISTING="$(aws guardduty list-detectors --region "$REGION" --query 'length(DetectorIds)' --output text 2>/dev/null || echo unavailable)"
 ENABLE_GD=$([[ "$GD_EXISTING" == "0" ]] && echo true || echo false)
 OIDC_EXISTING="$(aws iam list-open-id-connect-providers --query \
   "length(OpenIDConnectProviderList[?ends_with(Arn,'token.actions.githubusercontent.com')])" --output text)"
