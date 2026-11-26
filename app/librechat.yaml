@@ -40,7 +40,7 @@ interface:
           rgb-surface-secondary: '30 15 27'
           rgb-header-primary: '38 20 34'
   privacyPolicy:
-    externalUrl: 'https://YOUR-GITHUB-USER.github.io/suki-salon-assistant/system.html#privacy'
+    externalUrl: 'https://jansdale21.github.io/suki-salon-assistant/system.html#privacy'
     openNewTab: true
   termsOfService:
     modalAcceptance: true

@@ -381,7 +381,7 @@ Resources:
     Properties:
       Name: /suki/prod/GEMINI_MODEL
       Type: String
-      Value: gemini-3.8-flash
+      Value: gemini-3.5-flash-lite
       Description: Gemini model behind the suki-salon alias. Change here, no redeploy needed (gateway restart).
 
   AppInstance:

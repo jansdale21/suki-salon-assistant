@@ -80,7 +80,7 @@ Do these as your **own IAM user with MFA**, never the root account.
    ```
 8. Put the project website URL in Parameter Store (it becomes the app's Help link):
    `aws ssm put-parameter --name /suki/prod/WEBSITE_URL --type String --value https://<you>.github.io/suki-salon-assistant/`
-   Also replace `YOUR-GITHUB-USER` in `app/librechat.yaml` (privacy policy link), commit, and redeploy.
+   Also replace `jansdale21` in `app/librechat.yaml` (privacy policy link), commit, and redeploy.
 9. Optional S-band auto-deploy: add the repository variables listed at the top of `.github/workflows/deploy.yml`.
 10. Turn on GitHub Pages (Settings → Pages → Source: GitHub Actions).
 
