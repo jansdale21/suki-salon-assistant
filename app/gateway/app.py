@@ -96,8 +96,24 @@ def gateway_token() -> str | None:
     return settings.get("GATEWAY_TOKEN", env_fallback="GATEWAY_TOKEN")
 
 
+def reasoning_effort() -> str:
+    """How much the model 'thinks' before answering. Gemini 3.x flash models think by default,
+    which can take tens of seconds. 'low' keeps salon answers fast. Set to 'off' to send nothing."""
+    v = settings.get("GEMINI_REASONING_EFFORT", env_fallback="GEMINI_REASONING_EFFORT", default="low") or "low"
+    return v.strip().lower()
+
+
+RETRYABLE = {429, 500, 502, 503, 504}
+
+
+def fallback_models() -> list[str]:
+    """Comma-separated backup models, tried in order when the main model is overloaded (503) or rate-limited (429)."""
+    raw = settings.get("GEMINI_FALLBACK_MODELS", env_fallback="GEMINI_FALLBACK_MODELS", default="") or ""
+    return [m.strip() for m in raw.split(",") if m.strip()]
+
+
 def gemini_model() -> str:
-    return settings.get("GEMINI_MODEL", env_fallback="GEMINI_MODEL", default="gemini-3.8-flash") or "gemini-3.8-flash"
+    return settings.get("GEMINI_MODEL", env_fallback="GEMINI_MODEL", default="gemini-3.7-flash") or "gemini-3.7-flash"
 
 
 # --------------------------------------------------------------------------- knowledge
@@ -237,6 +253,9 @@ def build_payload(body: dict, model: str, kind: str) -> tuple[dict, int, str]:
         payload["max_tokens"] = body["max_completion_tokens"]
     payload["model"] = model
     payload["messages"] = messages
+    effort = reasoning_effort()
+    if effort not in ("", "off"):
+        payload["reasoning_effort"] = effort
     return payload, pii, question
 
 
@@ -322,14 +341,30 @@ async def chat_completions(request: Request):
     url = f"{GEMINI_BASE_URL}/chat/completions"
     assert http_client is not None
 
+    # Try the main model first; if Google says it is overloaded or rate-limited, try the fallbacks.
+    candidates = [model] + [m for m in fallback_models() if m != model]
+    tried: list[str] = []
+    last = len(candidates) - 1
+
     if not stream:
-        try:
-            resp = await http_client.post(url, json=payload, headers=headers)
-        except httpx.HTTPError as exc:
-            ms = int((time.perf_counter() - started) * 1000)
-            log_event("chat", **base, success=False, empty=True, latency_ms=ms, upstream_status=None,
-                      error=type(exc).__name__)
-            return _error(502, "The AI service did not respond")
+        resp = None
+        for i, m in enumerate(candidates):
+            payload["model"] = m
+            try:
+                resp = await http_client.post(url, json=payload, headers=headers)
+            except httpx.HTTPError as exc:
+                tried.append(f"{m}:{type(exc).__name__}")
+                if i < last:
+                    continue
+                ms = int((time.perf_counter() - started) * 1000)
+                log_event("chat", **{**base, "model": m}, tried=tried, success=False, empty=True,
+                          latency_ms=ms, upstream_status=None, error=type(exc).__name__)
+                return _error(502, "The AI service did not respond")
+            if resp.status_code in RETRYABLE and i < last:
+                tried.append(f"{m}:{resp.status_code}")
+                continue
+            break
+        base.update(model=m, tried=tried)
         ms = int((time.perf_counter() - started) * 1000)
         if resp.status_code != 200:
             log_event("chat", **base, success=False, empty=True, latency_ms=ms,
@@ -348,14 +383,27 @@ async def chat_completions(request: Request):
         return JSONResponse(data)
 
     # ---- streaming (Server-Sent Events): relay bytes as they arrive, observe content on the way
-    req = http_client.build_request("POST", url, json=payload, headers=headers)
-    try:
-        upstream = await http_client.send(req, stream=True)
-    except httpx.HTTPError as exc:
-        ms = int((time.perf_counter() - started) * 1000)
-        log_event("chat", **base, success=False, empty=True, latency_ms=ms, upstream_status=None,
-                  error=type(exc).__name__)
-        return _error(502, "The AI service did not respond")
+    upstream = None
+    for i, m in enumerate(candidates):
+        payload["model"] = m
+        req = http_client.build_request("POST", url, json=payload, headers=headers)
+        try:
+            upstream = await http_client.send(req, stream=True)
+        except httpx.HTTPError as exc:
+            tried.append(f"{m}:{type(exc).__name__}")
+            if i < last:
+                continue
+            ms = int((time.perf_counter() - started) * 1000)
+            log_event("chat", **{**base, "model": m}, tried=tried, success=False, empty=True,
+                      latency_ms=ms, upstream_status=None, error=type(exc).__name__)
+            return _error(502, "The AI service did not respond")
+        if upstream.status_code in RETRYABLE and i < last:
+            await upstream.aread()
+            await upstream.aclose()
+            tried.append(f"{m}:{upstream.status_code}")
+            continue
+        break
+    base.update(model=m, tried=tried)
 
     if upstream.status_code != 200:
         raw = await upstream.aread()

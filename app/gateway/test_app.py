@@ -105,3 +105,34 @@ def test_missing_knowledge_fails_closed(client, capsys):
         assert client.get("/healthz").status_code == 503
     finally:
         gw.knowledge.text = saved
+
+
+def test_falls_back_when_main_model_overloaded(client, capsys, monkeypatch):
+    monkeypatch.setenv("GEMINI_FALLBACK_MODELS", "backup-model")
+    calls = []
+    def overloaded_then_ok(request):
+        body = json.loads(request.content)
+        calls.append(body["model"])
+        if body["model"] != "backup-model":
+            return httpx.Response(503, json=[{"error": {"code": 503, "message": "high demand"}}])
+        return httpx.Response(200, json={"choices": [{"message": {"content": "₱350"}}]})
+    gw.http_client = httpx.AsyncClient(transport=httpx.MockTransport(overloaded_then_ok))
+    r = client.post("/v1/chat/completions", headers=AUTH,
+                    json={"model": "suki-salon", "messages": [{"role": "user", "content": "price?"}]})
+    assert r.status_code == 200 and calls[-1] == "backup-model" and len(calls) == 2
+    log = [json.loads(l) for l in capsys.readouterr().out.splitlines() if '"event": "chat"' in l][-1]
+    assert log["model"] == "backup-model" and log["tried"][0].endswith(":503") and log["success"] is True
+
+
+def test_streaming_falls_back(client, monkeypatch):
+    monkeypatch.setenv("GEMINI_FALLBACK_MODELS", "backup-model")
+    def handler(request):
+        body = json.loads(request.content)
+        if body["model"] != "backup-model":
+            return httpx.Response(503, json=[{"error": {"code": 503}}])
+        return httpx.Response(200, content=b'data: {"choices":[{"delta":{"content":"OK"}}]}\n\ndata: [DONE]\n\n',
+                              headers={"content-type": "text/event-stream"})
+    gw.http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    r = client.post("/v1/chat/completions", headers=AUTH,
+                    json={"model": "suki-salon", "stream": True, "messages": [{"role": "user", "content": "hi"}]})
+    assert r.status_code == 200 and "OK" in r.text
