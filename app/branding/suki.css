@@ -1,0 +1,15 @@
+/* Suki branding overrides, injected into every page by nginx (sub_filter in nginx.conf).
+   Makes the full Suki logo large on the sign-in and sign-up pages (LibreChat shows it 40 px tall). */
+div:has(> img[src="assets/logo.svg"]) {
+  height: 190px !important;
+  margin-top: 2rem !important;
+}
+img[src="assets/logo.svg"] {
+  display: block !important;
+  height: 100% !important;
+  width: auto !important;
+  max-width: 90vw !important;
+  margin: 0 auto !important;
+  object-fit: contain !important;
+  border-radius: 18px;
+}
