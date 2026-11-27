@@ -6,11 +6,46 @@ Suki is a reskinned [LibreChat](https://github.com/danny-avila/LibreChat) that a
 **fictional** beauty salon (services, prices, hours, booking, policies, aftercare), in English, Filipino or Taglish.
 It runs on AWS and is operated properly: monitoring, backups, security, automation and one practised incident.
 
-- Live system: `https://suki-salon.duckdns.org`
-- Project website: `https://jansdale21.github.io/suki-salon-assistant/`
-- Base system: LibreChat by Danny Avila and contributors, MIT licence. See [NOTICE.md](NOTICE.md).
-- Model: Google Gemini (free tier) through the Gemini API. We do not host a model, and no AWS AI service is used.
-- All salon data is invented. No real people, phone numbers or addresses.
+| | |
+|---|---|
+| **Live system** | <https://suki-salon.duckdns.org> (sign up with any e-mail; per-user and per-IP rate limits apply) |
+| **Project website** | <https://jansdale21.github.io/suki-salon-assistant/> |
+| **Base system** | LibreChat v0.8.9 by Danny Avila and contributors, MIT licence. See [NOTICE.md](NOTICE.md) |
+| **Model** | Google Gemini free tier through the Gemini API: `gemini-3.5-flash-lite`, with fallbacks `gemini-3-flash-preview`, `gemini-flash-lite-latest`, `gemini-3.7-flash`. No self-hosted model, no AWS AI service |
+| **AWS** | Account 153079315475, region ap-southeast-1 (Singapore), CloudFormation stack `suki` |
+| **Data** | All salon data is invented. No real people, phone numbers or addresses |
+
+### Results at a glance (2026-11-27)
+
+| Measure | Result |
+|---|---|
+| Test questions passed | 32 / 32 (100%), median answer 1.7 s |
+| Restore drill | counts match, database restored in **41 s** (RPO up to 6 h) |
+| Disk-full incident | detected in 7 min 41 s, fixed in 6 min 40 s, prevention proven |
+| Health check | every 5 min, all OK outside the planned restore drill |
+| Cost | US$5.63 month-to-date for the account (AWS credits); Suki ≈ US$1/day; Gemini ₱0 |
+
+Full evidence: the [project website](https://jansdale21.github.io/suki-salon-assistant/).
+
+---
+
+## Architecture
+
+Browser → **HTTPS** (`suki-salon.duckdns.org`, free **Let's Encrypt** certificate on nginx) → **EC2 t3.small** (Amazon Linux 2023, Docker:
+nginx → LibreChat → MongoDB, plus the **Suki gateway**) → Google Gemini. The gateway reads the salon knowledge base from **S3** and every
+secret from **SSM Parameter Store**. Logs and metrics go to **CloudWatch** (dashboard + 12 alarms → **SNS** e-mail). A **Lambda** health check
+runs every 5 minutes. Backups go to S3 every 6 hours. **CloudTrail** audits the account; **AWS Budgets** watches cost.
+
+### What changed during deployment (and why)
+
+| Problem | What we did |
+|---|---|
+| CloudShell: "account verification is in progress" | Ran the same scripts from GitHub Codespaces with the AWS CLI, switching into the `SukiAdmin` role with an MFA code |
+| GuardDuty: `SubscriptionRequiredException` | `deploy-stack.sh` skips GuardDuty when the account cannot use it yet |
+| CloudFront: "Your account must be verified before you can add new CloudFront resources" | HTTPS moved onto nginx with Let's Encrypt and a free DuckDNS name (sslip.io was rejected: not on the Public Suffix List, so it shares one Let's Encrypt limit with everyone) |
+| Gemini 503 "high demand" on the newest flash models | Main model `gemini-3.5-flash-lite`; the gateway retries fallback models on 429/5xx |
+| First restore drill brought back an empty database (backup was older than our accounts) | Back up right after creating accounts; drill repeated successfully |
+| Disk filled by a runaway debug log | `/var/log/suki` moved to its own capped 2 GiB volume |
 
 ---
 
@@ -19,138 +54,94 @@ It runs on AWS and is operated properly: monitoring, backups, security, automati
 | Path | What it is |
 |---|---|
 | `app/librechat.yaml` | The reskin: welcome text, theme colours, one fixed "Suki" assistant, features switched off, custom endpoint |
-| `app/branding/` | Logo and favicons (served by nginx over LibreChat's own) |
-| `app/nginx/nginx.conf` | Reverse proxy: branding, JSON access log, security headers |
-| `app/gateway/` | **Suki gateway** (Python/FastAPI): S3 knowledge base, PII redaction, per-request logging, Gemini key from Parameter Store. Unit tests: `pytest` |
+| `app/branding/` | Logo, icon, favicons and CSS (served by nginx in place of LibreChat's own) |
+| `app/nginx/nginx.conf`, `suki-app.conf` | HTTPS (Let's Encrypt), HTTP→HTTPS redirect, branding, JSON access log, security headers. `nginx.local.conf` is the HTTP-only laptop version |
+| `app/gateway/` | **Suki gateway** (Python/FastAPI): S3 knowledge base, PII redaction, fallback models, per-request logging, secrets from Parameter Store. Tests: `pytest` |
 | `app/docker-compose.yml` | Production stack on EC2 (nginx, LibreChat, MongoDB, gateway; logs to CloudWatch) |
-| `app/docker-compose.local.yml` | Laptop stack for week 1 |
+| `app/docker-compose.local.yml` | Laptop / Codespaces stack |
 | `content/` | The salon knowledge base and Suki's system prompt (uploaded to S3) |
-| `infra/cloudformation/suki-stack.yaml` | **All AWS infrastructure**: EC2, EIP, CloudFront, S3, IAM, SG, SNS, log groups, metric filters, 12 alarms, dashboard, Budget, CloudTrail, GuardDuty, health-check Lambda, GitHub OIDC role |
-| `infra/scripts/` | `put-secrets.sh` (laptop), `deploy-stack.sh` (laptop), `bootstrap-instance.sh` and `deploy.sh` (EC2), `upload-content.sh` |
+| `infra/cloudformation/suki-stack.yaml` | **All AWS infrastructure**: EC2, Elastic IP, S3, IAM, security group, SNS, log groups, metric filters, 12 alarms, dashboard, Budget, CloudTrail, GuardDuty (when allowed), health-check Lambda, GitHub OIDC role |
+| `infra/scripts/` | `put-secrets.sh`, `deploy-stack.sh` (run from your machine), `bootstrap-instance.sh` and `deploy.sh` (run on EC2), `upload-content.sh` |
 | `infra/cloudwatch/agent.json` | CloudWatch agent: memory/disk metrics, automation logs |
 | `ops/backup/` | Backup to S3 every 6 hours and the restore drill |
 | `ops/eval/` | 32 labelled test questions and the scoring script |
-| `ops/fault/` | Disk-full fault injector, resolve marker, candidate prevention (`prevention/isolate-log-volume.sh`) |
-| `ops/systemd/` | Timers for the backup (every 6 h) and test run (03:00 and 15:00), Asia/Manila |
+| `ops/fault/` | Disk-full fault injector, resolve marker, prevention (`prevention/isolate-log-volume.sh`) |
+| `ops/tls/` | DuckDNS update and Let's Encrypt renewal |
+| `ops/systemd/` | Timers: backup every 6 h, test run 03:00 and 15:00, certificate check daily (Asia/Manila) |
 | `ops/evidence/collect-evidence.sh` | Read-only AWS commands whose output is evidence for the website |
 | `.github/workflows/` | `deploy.yml` (push to main → test → S3 + redeploy via SSM), `secret-scan.yml` (gitleaks, full history), `pages.yml` (website) |
-| `docs/` | The project website (GitHub Pages). Every `EVIDENCE NEEDED` box must be replaced with real evidence |
+| `docs/` | The project website (GitHub Pages); screenshots in `docs/evidence/` |
 
 ---
 
-## Week 1 — run it locally
+## Run it locally (Codespaces or Docker Desktop)
 
-Prerequisites: Docker Desktop, a Google AI Studio API key (free).
+Prerequisite: a Google AI Studio API key (free).
 
 ```bash
 cd app
 cp .env.local.example .env.local      # fill in the blanks (openssl rand -hex 32 / -hex 16)
 docker compose -f docker-compose.local.yml --env-file .env.local up -d --build
-open http://localhost:8088            # register a test account (invented name, @example.com e-mail)
+# open http://localhost:8088 (in Codespaces: the forwarded port 8088)
 ```
 
 Gateway tests: `cd app/gateway && pip install -r requirements.txt pytest && pytest -q`
 
-Before you reskin anything, also run **stock** LibreChat once (upstream quick start) and take the "before" screenshot (E-05) and baseline numbers.
+## Deploy to AWS
 
-## Week 2 — deploy to AWS
+Use your **own IAM user with MFA**, switched into the admin role, never the root account. From CloudShell, or from Codespaces with an AWS CLI
+profile that assumes `SukiAdmin` with `mfa_serial` set.
 
-Do these as your **own IAM user with MFA**, never the root account.
+```bash
+export AWS_REGION=ap-southeast-1
+./infra/scripts/put-secrets.sh        # app secrets + Gemini key (hidden input) into /suki/prod
+aws ssm put-parameter --name /suki/prod/GEMINI_FALLBACK_MODELS --type String \
+  --value "gemini-3-flash-preview,gemini-flash-lite-latest,gemini-3.7-flash"
+aws ssm put-parameter --name /suki/prod/DUCKDNS_TOKEN --type SecureString --value "<duckdns token>"
 
-1. **Account hygiene (day one):** MFA on root and on both IAM users; no shared logins; an admin role you switch into when needed.
-2. **Secrets into Parameter Store:**
-   ```bash
-   export AWS_REGION=ap-southeast-1
-   ./infra/scripts/put-secrets.sh          # generates app secrets, asks for the Gemini key (hidden input)
-   ```
-3. **Push this repository to GitHub as a public repo** (the instance clones it; it contains no secrets — `secret-scan.yml` proves it).
-4. **Create the stack:**
-   ```bash
-   ALERT_EMAIL=your-real-inbox@example.com \
-   GIT_REPO_URL=https://github.com/<you>/suki-salon-assistant.git \
-   GITHUB_REPO=<you>/suki-salon-assistant \
-   ./infra/scripts/deploy-stack.sh
-   ```
-5. **Confirm the SNS e-mail** ("AWS Notification - Subscription Confirmation"). No confirmation = no alerts.
-6. Wait about 10 minutes, open the `PublicUrl` output. Bootstrap log: CloudWatch Logs `/suki/automation`, stream `<instance-id>-bootstrap`.
-7. **Create the user accounts** (registration is closed):
-   ```bash
-   aws ssm start-session --target <InstanceId>
-   sudo docker compose --project-directory /opt/suki/app -f /opt/suki/app/docker-compose.yml exec api npm run create-user
-   ```
-8. Put the project website URL in Parameter Store (it becomes the app's Help link):
-   `aws ssm put-parameter --name /suki/prod/WEBSITE_URL --type String --value https://<you>.github.io/suki-salon-assistant/`
-   Also replace `jansdale21` in `app/librechat.yaml` (privacy policy link), commit, and redeploy.
-9. Optional S-band auto-deploy: add the repository variables listed at the top of `.github/workflows/deploy.yml`.
-10. Turn on GitHub Pages (Settings → Pages → Source: GitHub Actions).
+ALERT_EMAIL=you@example.com \
+PUBLIC_HOST=suki-salon.duckdns.org \
+GIT_REPO_URL=https://github.com/jansdale21/suki-salon-assistant.git \
+GITHUB_REPO=jansdale21/suki-salon-assistant \
+./infra/scripts/deploy-stack.sh
+```
 
-If the LibreChat container logs a config error, compare `app/librechat.yaml` with that release's `librechat.example.yaml`. The deploy script
-tries `registry.librechat.ai/librechat-ai/librechat:v0.8.9`, then `ghcr.io/danny-avila/librechat:v0.8.9`, then the dev image; pin your
-choice with `aws ssm put-parameter --name /suki/prod/LIBRECHAT_IMAGE --type String --value <image>`.
-
-## Week 3 — monitor and back up
-
-- Dashboard **Suki-Operations** and the 12 `suki-*` alarms exist after step 4. Trigger one on purpose (e.g. stop the app for 10 min → `suki-healthcheck-failed`) and screenshot the e-mail (E-08).
-- Backups run every 6 hours. Run one now: `sudo systemctl start suki-backup.service && tail /var/log/suki/backup.log`
-- Restore test, early: `sudo /opt/suki/ops/backup/restore-drill.sh --verify`, then the real one, `--live` (E-11).
-
-## Week 4 — automate and fix
-
-- Check the timers: `systemctl list-timers 'suki-*'`. You need two unattended runs of each; they have been running since week 2.
-- Fault: `sudo /opt/suki/ops/fault/inject-disk-fault.sh`, then investigate **without** looking at the script, as if it were real. Record times,
-  find the root cause, fix it, `sudo /opt/suki/ops/fault/mark-resolved.sh "what you did"`, add a prevention, re-run to prove it, finish the runbook.
-
-## Week 5 — publish and present
-
-Replace every `EVIDENCE NEEDED`, `todo` and `DRAFT` marker on the website (`./docs/check-evidence.sh` lists what is left), record the
-video, sign the declaration, then ZIP the repository **including `.git`**.
-
-### Schedule
-
-We are doing the whole project in **2 days** (see our step-by-step guide). The backup runs every 6 hours and the test run every 12 hours,
-so every automation has at least two unattended runs by the morning of day 2. Before/after measurements use two 4-hour windows at the
-same time of day (day 1 and day 2).
-
----|---|---|
-| 1 | Nov 23 – Nov 29 | Running locally, reskin done, baseline captured, README log started |
-| 2 | Nov 30 – Dec 6 | Deployed over HTTPS, secrets in Parameter Store, MFA, first Well-Architected pass, website started |
-| 3 | Dec 7 – Dec 13 | Dashboard, alarms, real alert e-mail, backups running, restore tested |
-| 4 | Dec 14 – Dec 20 | Automations proven (2+ runs each), fault + root cause + prevention + runbook, second Well-Architected pass |
-| 5 | Dec 21 – Dec 27 | Results with before/after numbers, website finished, video, submission |
-
----
+Then: confirm the SNS e-mail; wait about 10 minutes (bootstrap log in CloudWatch `/suki/automation`); open the `PublicUrl` output.
+Turn on GitHub Pages (Settings → Pages → Source: GitHub Actions) and store the website URL:
+`aws ssm put-parameter --name /suki/prod/WEBSITE_URL --type String --value https://jansdale21.github.io/suki-salon-assistant/`
 
 ## Day-to-day operations
 
 ```bash
-aws ssm start-session --target <InstanceId>                 # shell, no SSH
+# EC2 → suki-app → Connect → Session Manager (no SSH), then:
+sudo -i
 cd /opt/suki && C="docker compose --project-directory app -f app/docker-compose.yml"
-sudo $C ps                                                  # containers
-sudo $C logs --tail 50 api                                  # LibreChat log (also in CloudWatch /suki/app)
+$C ps                                                       # containers
+$C logs --tail 50 api                                       # LibreChat log (also CloudWatch /suki/app)
 curl -s localhost:8080/healthz                              # gateway + knowledge version
-sudo infra/scripts/deploy.sh --pull                         # redeploy latest main
-./infra/scripts/upload-content.sh                           # (laptop) push content/ to S3; live within 5 min
-aws ssm put-parameter --name /suki/prod/GEMINI_MODEL --value <model> --overwrite --type String  # then: sudo $C restart gateway
-python3 ops/eval/run_eval.py                                # test questions now
+$C exec api npm run create-user                             # make an account by hand
+systemctl start suki-backup.service                         # backup now (do this after creating accounts)
+bash ops/backup/restore-drill.sh --verify                   # safe restore test; --live for the real drill
+systemctl start suki-eval.service                           # run the 32 test questions now
+bash infra/scripts/deploy.sh --pull                         # redeploy latest main
 ```
 
-**Cost:** a t3.small in Singapore is about US$0.0264/hour (roughly US$19/month if left on 24/7). With the public IPv4 address,
-disk and custom metrics, expect roughly US$25–30/month. The default Budget alert is US$30. Stop the instance when not needed, and
-**delete the stack at the end of term** (`aws cloudformation delete-stack --stack-name suki`; the S3 buckets are retained, so empty and delete them too),
-delete the Gemini key in Google AI Studio, and tell the instructor.
+Change the model without redeploying:
+`aws ssm put-parameter --name /suki/prod/GEMINI_MODEL --value <model> --overwrite --type String`, then `$C restart gateway`.
+
+**Cost and clean-up:** about US$1/day (t3.small, public IPv4, disk, CloudWatch), paid from AWS credits; Budget alert at US$30.
+After grading: `aws cloudformation delete-stack --stack-name suki`, empty and delete the `suki-…` S3 buckets, delete the DuckDNS name,
+the Gemini key and the IAM access key used from Codespaces, and tell the instructor. Our other app in the same account is not part of the stack.
 
 ---
 
-## Contribution log (evidence for individual marks)
+## Contribution log
 
-Keep this up to date every week. One line per meaningful piece of work.
-
-| Week | Date | Who | What |
-|---|---|---|---|
-| 1 | 2026-11-22 | Both | Read the brief; chose LibreChat + Gemini; salon domain. Generated the project scaffold with Claude (declared on the website) |
-| 1 | | Jansdale | |
-| 1 | | Rhea | |
-| 2 | | | |
-| 3 | | | |
-| 4 | | | |
-| 5 | | | |
+| Date | Who | What |
+|---|---|---|
+| 2026-11-22 | Both | Read the brief; chose LibreChat + Gemini; salon domain. Generated the project scaffold with Claude (declared on the website) |
+| 2026-11-26 | Jansdale | Ran stock LibreChat and Suki in Codespaces (Docker Desktop unavailable); new logo; fixed Gemini 503 with fallback models |
+| 2026-11-26 | Jansdale, Rhea | IAM users with MFA, `suki-team` group, `SukiAdmin` role (MFA required) |
+| 2026-11-27 | Jansdale | Secrets in Parameter Store; deploy blocked (CloudShell, GuardDuty, CloudFront); HTTPS moved to Let's Encrypt + DuckDNS; stack deployed |
+| 2026-11-27 | Jansdale | Live test, eval 32/32, two restore drills, alarm test, disk-full incident and prevention, evidence screenshots |
+| 2026-11-27 | | *(add Rhea's and Jansdale's remaining work: website text, video, declaration)* |

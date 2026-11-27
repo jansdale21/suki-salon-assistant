@@ -10,7 +10,7 @@
 <body>
 <header class="site"><div class="wrap">
 <a class="brand" href="index.html"><img src="assets/logo.svg" alt="">Suki · SAM10</a>
-<nav class="pages"><a href="index.html" class=on>Summary</a><a href="infrastructure.html">AWS design</a><a href="system.html">System card</a><a href="baseline.html">Baseline</a><a href="well-architected.html">Well-Architected</a><a href="operations.html">Monitoring · Backup · Security</a><a href="automation-incident.html">Automation · Incident</a><a href="results.html">Results</a><a href="next-steps.html">Next steps</a><a href="declaration.html">Declaration</a></nav>
+<nav class="pages"><a href="index.html" class=on>Summary</a><a href="infrastructure.html">AWS design</a><a href="system.html">System card</a><a href="baseline.html">Baseline</a><a href="well-architected.html">Well-Architected</a><a href="operations.html">Monitoring · Backup · Security</a><a href="automation-incident.html">Automation · Incident</a><a href="results.html">Results</a><a href="next-steps.html">Next steps</a><a href="declaration.html">Declaration</a><a href="video.html">Video</a></nav>
 </div></header>
 <main class="wrap">
 
@@ -20,16 +20,37 @@
     <h1>Suki — the Suklay &amp; Kulay salon assistant</h1>
     <p class="lead">A chat assistant that answers customers' questions about a neighbourhood beauty salon, and the
     operations work that keeps it running safely on AWS.</p>
-    <p><span class="pill">SAM10 final project</span> <span class="pill">LibreChat reskin</span> <span class="pill">AWS · ap-southeast-1</span></p>
+    <p><span class="pill">SAM10 final project</span> <span class="pill">LibreChat reskin</span> <span class="pill">Google Gemini (free tier)</span> <span class="pill">AWS · ap-southeast-1</span></p>
+    <p><a class="btn" href="https://suki-salon.duckdns.org">Try Suki live →</a><a class="btn alt" href="https://github.com/jansdale21/suki-salon-assistant">Repository</a></p>
   </div>
 </div>
 
-<h2>Presentation video</h2>
-<div class="video">
-  <!-- Replace VIDEO_ID with your YouTube video ID (Share > Embed). Keep it Unlisted if you prefer. -->
-  <!-- <iframe src="https://www.youtube-nocookie.com/embed/VIDEO_ID" title="Suki SAM10 presentation" allowfullscreen></iframe> -->
+<div class="stats">
+  <div class="stat"><b>32 / 32</b><span>test questions passed (median answer 1.7 s)</span></div>
+  <div class="stat"><b>41 s</b><span>to restore the database in our drill</span></div>
+  <div class="stat"><b>7 min 41 s</b><span>to detect a full disk (fixed 6 min 40 s later)</span></div>
+  <div class="stat"><b>12</b><span>CloudWatch alarms that e-mail us</span></div>
+  <div class="stat"><b>US$5.63</b><span>AWS cost this month, paid by credits; AI ₱0</span></div>
 </div>
-<div class="evidence-needed" data-id="D2">Record the 5–8 minute presentation (both of you, live demo following this site's order), upload to YouTube, and paste the embed above.</div>
+
+<h2>How a question travels</h2>
+<div class="flow">
+  <div class="node"><b>Customer</b>asks in English, Filipino or Taglish</div><div class="arrow">→</div>
+  <div class="node"><b>HTTPS</b>suki-salon.duckdns.org, Let's Encrypt</div><div class="arrow">→</div>
+  <div class="node"><b>EC2</b>nginx → LibreChat → MongoDB</div><div class="arrow">→</div>
+  <div class="node"><b>Suki gateway</b>adds salon facts from S3, hides phone numbers</div><div class="arrow">→</div>
+  <div class="node"><b>Gemini</b>writes the answer</div>
+</div>
+<p>Every answer is logged (time taken, success, model) to CloudWatch; alarms e-mail us when something is wrong. Full diagram on the <a href="infrastructure.html">AWS design page</a>.</p>
+
+<h2>How we built it</h2>
+<ol class="steps">
+  <li><b>Ran the original</b>Stock LibreChat in GitHub Codespaces; recorded the baseline.</li>
+  <li><b>Made it Suki</b>New name, logo, colours, salon knowledge base and our own gateway to Gemini.</li>
+  <li><b>Deployed to AWS</b>One CloudFormation stack: EC2, S3, Parameter Store, IAM with MFA, HTTPS.</li>
+  <li><b>Made it operable</b>Dashboard, 12 alarms, logs, backups every 6 h, health check every 5 min.</li>
+  <li><b>Broke it on purpose</b>Tested a restore and a full-disk incident; fixed, prevented, wrote a runbook.</li>
+</ol>
 
 <h2>What the system does</h2>
 <p><strong>Suki</strong> is a website where customers of <em>Suklay &amp; Kulay Beauty Studio</em> (a fictional salon) can ask
@@ -51,7 +72,7 @@ no password, its secret keys sat in a plain text file, and nothing was backed up
   <li><strong>Put it on AWS:</strong> one small EC2 server with HTTPS (free Let's Encrypt certificate), with the salon content in S3 and every key in Parameter Store.</li>
   <li><strong>Made it observable:</strong> a CloudWatch dashboard, 12 alarms that e-mail us, and a log line for every question with its response time and outcome.</li>
   <li><strong>Made it recoverable:</strong> database backups every 6 hours to versioned S3, and a restore that we actually tested.</li>
-  <li><strong>Locked it down:</strong> MFA and one IAM user each, no SSH, only HTTPS open to the internet (port 80 just redirects), phone numbers and e-mails removed before anything reaches the AI provider, CloudTrail and GuardDuty on.</li>
+  <li><strong>Locked it down:</strong> MFA and one IAM user each, no SSH, only HTTPS open to the internet (port 80 just redirects), phone numbers and e-mails removed before anything reaches the AI provider, CloudTrail on (GuardDuty could not be enabled while AWS was verifying our account).</li>
   <li><strong>Automated the chores:</strong> a health check every 5 minutes, a backup every 6 hours and a test-question run every 12 hours, all running unattended.</li>
   <li><strong>Practised failure:</strong> we broke it on purpose (a full disk), found the root cause, fixed it, prevented it, and wrote a runbook.</li>
 </ul>
@@ -76,17 +97,18 @@ small salon, that is cheaper and simpler than running two of everything. Details
 <h2>Links</h2>
 <ul>
   <li>Live system: <a href="https://suki-salon.duckdns.org">https://suki-salon.duckdns.org</a> (sign up with any e-mail; per-user and per-IP rate limits protect the free model quota)</li>
+  <li>Presentation video: <a href="video.html">Video page</a></li>
   <li>Repository: <a href="https://github.com/jansdale21/suki-salon-assistant">https://github.com/jansdale21/suki-salon-assistant</a></li>
 </ul>
 
 <h2>Team</h2>
 <table>
   <tr><th>Name</th><th>Main role</th><th>Presents in the video</th></tr>
-  <tr><td>Jansdale S. Yusi</td><td>AI and integration engineer: base system, reskin, gateway, AWS wiring</td><td><span class="todo">sections …</span></td></tr>
-  <tr><td>Rhea Angeline G. Manipon</td><td>Reliability engineer: dashboard, alarms, backups, automation, incident</td><td><span class="todo">sections …</span></td></tr>
+  <tr><td>Jansdale S. Yusi</td><td>AI and integration engineer: base system, reskin, gateway, AWS wiring</td><td>Summary, live demo, AWS design and the deployment problems</td></tr>
+  <tr><td>Rhea Angeline G. Manipon</td><td>Reliability engineer: dashboard, alarms, backups, automation, incident</td><td>Monitoring and alarms, backup and restore drill, the disk-full incident</td></tr>
 </table>
 <p>Shared: deployment, security and this website. The week-by-week contribution log is in the repository README.
-See the <a href="declaration.html">signed declaration</a>, including how we used AI tools.</p>
+See the <a href="declaration.html">declaration</a>, including how we used AI tools.</p>
 
 </main>
 <footer class="site">Suki — Suklay &amp; Kulay salon assistant · SAM10 Systems Administration and Maintenance final project ·
