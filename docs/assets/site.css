@@ -102,3 +102,7 @@ figure a{cursor:zoom-in}
 .lightbox img{max-width:95vw;max-height:84vh;border-radius:10px;background:#fff;box-shadow:0 10px 40px rgba(0,0,0,.4)}
 .lb-cap{color:#f6e6ef;font-size:.9rem;max-width:90ch;text-align:center;margin:.8rem 0 0}
 .lb-close{position:absolute;top:1rem;right:1.4rem;background:#fff;color:#3b1834;border:0;border-radius:50%;width:2.4rem;height:2.4rem;font-size:1.5rem;line-height:1;cursor:pointer;font-weight:700}
+/* footer stays at the bottom of the window on short pages */
+body{display:flex;flex-direction:column;min-height:100vh}
+header.site,footer.site{flex-shrink:0}
+main{flex:1 0 auto;width:100%}
