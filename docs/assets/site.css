@@ -625,7 +625,7 @@ header.site .wrap{
  line-height:1.5;
  list-style:none;
 }
-.breadcrumbs li{max-width:none;padding:0}
+.breadcrumbs li{max-width:none;margin:0;padding:0}
 .breadcrumbs li+li::before{content:"/";margin-right:.45rem;color:#c4bdc1}
 .breadcrumbs a{color:#817984;text-decoration:none}
 .breadcrumbs a:hover{color:var(--docs-plum);text-decoration:underline}
