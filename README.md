@@ -144,6 +144,4 @@ the Gemini key and the IAM access key used from Codespaces, and tell the instruc
 | 2026-11-26 | Jansdale, Rhea | IAM users with MFA, `suki-team` group, `SukiAdmin` role (MFA required) |
 | 2026-11-27 | Jansdale | Secrets in Parameter Store; deploy blocked (CloudShell, GuardDuty, CloudFront); HTTPS moved to Let's Encrypt + DuckDNS; stack deployed |
 | 2026-11-27 | Jansdale | Live test, eval 32/32, two restore drills, alarm test, disk-full incident and prevention, evidence screenshots |
-| 2026-11-27 | Jansdale, Rhea | Video Presentation |
-| 2026-11-27 | Rhea | Frontend Development |
-
+| 2026-11-27 | | *(add Rhea's and Jansdale's remaining work: website text, video, declaration)* |
