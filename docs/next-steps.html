@@ -16,7 +16,7 @@
 
 <h1>What we would do next</h1>
 <p class="lead">Realistic improvements, most important first.</p>
-<div>These follow from the gaps in our Well-Architected review. Reorder or replace them based on what you actually observed.</div>
+<div>These follow from the gaps in our Well-Architected review and from what we observed while running Suki.</div>
 <ol>
   <li><strong>Remove the single point of failure, cheaply.</strong> Daily EBS snapshots with AWS Backup and an Auto Scaling group of one instance, so a dead server is replaced automatically and recovery no longer depends on us. Improves Reliability; small extra cost.</li>
   <li><strong>Protect the front door.</strong> Once AWS verifies the account, put CloudFront + AWS WAF back in front and lock the security group to CloudFront again, so floods cannot exhaust the model quota.</li>
@@ -29,5 +29,6 @@
 <footer class="site">Suki — Suklay &amp; Kulay salon assistant · SAM10 Systems Administration and Maintenance final project ·
 Jansdale S. Yusi &amp; Rhea Angeline G. Manipon · Built on <a href="https://github.com/danny-avila/LibreChat">LibreChat</a> (MIT) ·
 Suklay &amp; Kulay is a fictional business; all salon data is invented.</footer>
+<script src="assets/site.js"></script>
 </body>
 </html>

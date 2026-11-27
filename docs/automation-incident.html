@@ -102,15 +102,18 @@ Truncation and pruning cannot be undone; never delete anything under /opt/suki/a
 If a container will not start afterwards: sudo /opt/suki/infra/scripts/deploy.sh
 
 7. GOTCHAS
-&lt;fill in from your real incident: e.g. rm on an open log file frees nothing until the process stops&gt;
+From our incident (2026-11-27): the log grew to 8.8 GB in under 5 minutes, so a daily logrotate can never catch a runaway log.
+Truncate (: &gt; file) instead of rm: rm on a file a process still holds open frees nothing until that process stops.
+The lasting fix is containment: /var/log/suki now lives on its own 2 GiB volume, so it cannot fill the root disk.
 
 8. CHANGE HISTORY
-YYYY-MM-DD - first version after the disk-full incident
+2026-11-27 - first version after the disk-full incident
 </code></pre>
 
 </main>
 <footer class="site">Suki — Suklay &amp; Kulay salon assistant · SAM10 Systems Administration and Maintenance final project ·
 Jansdale S. Yusi &amp; Rhea Angeline G. Manipon · Built on <a href="https://github.com/danny-avila/LibreChat">LibreChat</a> (MIT) ·
 Suklay &amp; Kulay is a fictional business; all salon data is invented.</footer>
+<script src="assets/site.js"></script>
 </body>
 </html>

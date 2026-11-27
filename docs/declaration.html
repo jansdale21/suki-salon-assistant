@@ -29,29 +29,34 @@ clearly identified as borrowed, based on an existing open project, or as AI-assi
 </ul>
 <table>
   <tr><th>Student name</th><th>Student ID</th></tr>
-  <tr><td>Jansdale S. Yusi</td><td><span class="todo"></span></td></tr>
-  <tr><td>Rhea Angeline G. Manipon</td><td><span class="todo"></span></td></tr>
+  <tr><td>Jansdale S. Yusi</td><td>23-1559-690</td></tr>
+  <tr><td>Rhea Angeline G. Manipon</td><td>23-0531-509</td></tr>
 </table>
 </div>
 
 <h2>Use of AI tools</h2>
-<p class="draft">We used Claude (Anthropic) to generate the starting scaffold of this project: the invented salon content, the Suki gateway,
+<p>We used Claude (Anthropic) to generate the starting scaffold of this project: the invented salon content, the Suki gateway,
 the CloudFormation template, the operations scripts and this website's structure and draft text. We checked its output by
 reading every file, running the gateway's unit tests, deploying it to our own AWS account, fixing what did not work (listed in our commit
-history), and replacing every placeholder with evidence from our own running system. <span class="todo">Add anything else you used AI for
-(e.g. explaining concepts, reviewing writing) and how you verified it.</span></p>
+history), and replacing every placeholder with evidence from our own running system. During deployment we also used Claude for step-by-step guidance and troubleshooting: working around the blocked CloudShell,
+GuardDuty and CloudFront (switching to Let's Encrypt and DuckDNS), reading error messages, and understanding our first restore-drill result.
+It also helped write this website's text from our own screenshots and logs. We verified every step by running it on our own system and
+checking the result ourselves; the screenshots on this site are unedited.</p>
 
 <h2>Credits</h2>
 <ul>
   <li>LibreChat by Danny Avila and contributors — <a href="https://github.com/danny-avila/LibreChat">github.com/danny-avila/LibreChat</a>, MIT licence.</li>
   <li>Google Gemini API (free tier) — used under Google's Gemini API terms.</li>
   <li>AWS documentation and the AWS Well-Architected Framework — <a href="https://docs.aws.amazon.com/wellarchitected/">docs.aws.amazon.com/wellarchitected</a>.</li>
-  <li><span class="todo">Any tutorial or re:Post answer you relied on, with a link.</span></li>
+  <li>Let's Encrypt and Certbot (free HTTPS certificates): <a href="https://letsencrypt.org/docs/">letsencrypt.org/docs</a>; rate limits and the Public Suffix List: <a href="https://letsencrypt.org/docs/rate-limits/">letsencrypt.org/docs/rate-limits</a>.</li>
+  <li>DuckDNS (free DNS name): <a href="https://www.duckdns.org/">duckdns.org</a>.</li>
+  <li>Suki logo: designed by Jansdale S. Yusi.</li>
 </ul>
 
 </main>
 <footer class="site">Suki — Suklay &amp; Kulay salon assistant · SAM10 Systems Administration and Maintenance final project ·
 Jansdale S. Yusi &amp; Rhea Angeline G. Manipon · Built on <a href="https://github.com/danny-avila/LibreChat">LibreChat</a> (MIT) ·
 Suklay &amp; Kulay is a fictional business; all salon data is invented.</footer>
+<script src="assets/site.js"></script>
 </body>
 </html>
