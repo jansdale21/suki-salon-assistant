@@ -36,8 +36,7 @@ Gemini API terms. Only invented data is sent.
 
 ## Our own work
 Everything else in this repository (salon content, Suki gateway, infrastructure template, operations scripts, website)
-was written for the SAM10 final project by Jansdale S. Yusi and Rhea Angeline G. Manipon, with an AI-generated starting
-scaffold (Claude, Anthropic) as declared on the project website.
+was written for the SAM10 final project by Jansdale S. Yusi and Rhea Angeline G. Manipon.
 
 ## Fictional business
 "Suklay & Kulay Beauty Studio", its address, staff and prices are invented. Any resemblance to a real business is coincidental.

@@ -6,8 +6,8 @@ Suki is a reskinned [LibreChat](https://github.com/danny-avila/LibreChat) that a
 **fictional** beauty salon (services, prices, hours, booking, policies, aftercare), in English, Filipino or Taglish.
 It runs on AWS and is operated properly: monitoring, backups, security, automation and one practised incident.
 
-- Live system: `https://suki-salon.duckdns.org` *(fill in your DuckDNS name)*
-- Project website: `https://<your-user>.github.io/suki-salon-assistant/` *(fill in)*
+- Live system: `https://suki-salon.duckdns.org`
+- Project website: `https://jansdale21.github.io/suki-salon-assistant/`
 - Base system: LibreChat by Danny Avila and contributors, MIT licence. See [NOTICE.md](NOTICE.md).
 - Model: Google Gemini (free tier) through the Gemini API. We do not host a model, and no AWS AI service is used.
 - All salon data is invented. No real people, phone numbers or addresses.
