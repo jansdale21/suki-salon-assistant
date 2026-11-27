@@ -139,9 +139,10 @@ the Gemini key and the IAM access key used from Codespaces, and tell the instruc
 
 | Date | Who | What |
 |---|---|---|
-| 2026-11-22 | Both | Read the brief; chose LibreChat + Gemini; salon domain. Generated the project scaffold with Claude (declared on the website) |
+| 2026-11-22 | Both | Read the brief; chose LibreChat + Gemini; salon domain. |
 | 2026-11-26 | Jansdale | Ran stock LibreChat and Suki in Codespaces (Docker Desktop unavailable); new logo; fixed Gemini 503 with fallback models |
 | 2026-11-26 | Jansdale, Rhea | IAM users with MFA, `suki-team` group, `SukiAdmin` role (MFA required) |
 | 2026-11-27 | Jansdale | Secrets in Parameter Store; deploy blocked (CloudShell, GuardDuty, CloudFront); HTTPS moved to Let's Encrypt + DuckDNS; stack deployed |
-| 2026-11-27 | Jansdale | Live test, eval 32/32, two restore drills, alarm test, disk-full incident and prevention, evidence screenshots |
-| 2026-11-27 | | *(add Rhea's and Jansdale's remaining work: website text, video, declaration)* |
+| 2026-11-27 | Jansdale, Rhea | Live test, eval 32/32, two restore drills, alarm test, disk-full incident and prevention, evidence screenshots |
+| 2026-11-27 | Jansdale, Rhea | Video Presentation |
+| 2026-11-27 | Rhea | Frontend Development |
