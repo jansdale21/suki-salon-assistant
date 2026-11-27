@@ -1,0 +1,10 @@
+[Unit]
+Description=Check the Suki HTTPS certificate once a day
+
+[Timer]
+OnCalendar=*-*-* 04:30:00 Asia/Manila
+Persistent=true
+RandomizedDelaySec=1800
+
+[Install]
+WantedBy=timers.target

@@ -59,7 +59,7 @@ ALLOW_SOCIAL_REGISTRATION=false
 ALLOW_PASSWORD_RESET=false
 SEARCH=false
 NO_INDEX=true
-TRUST_PROXY=2
+TRUST_PROXY=1
 ENDPOINTS=custom
 CONSOLE_JSON=true
 DEBUG_LOGGING=false
@@ -83,9 +83,38 @@ fi
 mkdir -p app/data/uploads app/data/images app/data/mongo
 chown -R 1000:1000 app/data/uploads app/data/images
 
+COMPOSE=(docker compose --project-directory app -f app/docker-compose.yml)
+
+# --- HTTPS certificate: Let's Encrypt for the free x-x-x-x.sslip.io name of our Elastic IP.
+# (CloudFront was blocked while the AWS account was under verification, so TLS ends on nginx.)
+# A self-signed certificate is only the last resort so the site still starts; the renew timer keeps retrying.
+PUBLIC_HOST="${PUBLIC_URL#https://}"; PUBLIC_HOST="${PUBLIC_HOST%%/*}"
+TLS_DIR=/etc/suki-tls; LE_LIVE=/etc/letsencrypt/live/suki
+mkdir -p "$TLS_DIR" /var/www/certbot /etc/letsencrypt
+bash ops/tls/duckdns-update.sh "$PUBLIC_HOST" | tee -a "$LOG" || log "\"step\":\"duckdns_update_failed\""
+if [[ ! -s "$LE_LIVE/fullchain.pem" ]]; then
+  "${COMPOSE[@]}" stop nginx >/dev/null 2>&1 || true   # certbot needs port 80 for a few seconds
+  if docker run --rm -p 80:80 -v /etc/letsencrypt:/etc/letsencrypt docker.io/certbot/certbot:latest \
+       certonly --standalone --non-interactive --agree-tos --register-unsafely-without-email \
+       --cert-name suki -d "$PUBLIC_HOST" >>"$LOG" 2>&1; then
+    log "\"step\":\"tls_issued\",\"host\":\"$PUBLIC_HOST\""
+  else
+    log "\"step\":\"tls_issue_failed\",\"host\":\"$PUBLIC_HOST\""
+  fi
+fi
+if [[ -s "$LE_LIVE/fullchain.pem" ]]; then
+  install -m 0644 "$LE_LIVE/fullchain.pem" "$TLS_DIR/fullchain.pem"
+  install -m 0600 "$LE_LIVE/privkey.pem" "$TLS_DIR/privkey.pem"
+elif [[ ! -s "$TLS_DIR/fullchain.pem" ]]; then
+  command -v openssl >/dev/null || dnf install -y -q openssl
+  openssl req -x509 -nodes -newkey rsa:2048 -days 30 -subj "/CN=$PUBLIC_HOST" \
+    -keyout "$TLS_DIR/privkey.pem" -out "$TLS_DIR/fullchain.pem" 2>/dev/null
+  chmod 600 "$TLS_DIR/privkey.pem"
+  log "\"step\":\"tls_self_signed\",\"host\":\"$PUBLIC_HOST\""
+fi
+
 # --- build the gateway and start everything
 docker build -q -t "suki-gateway:$APP_VERSION" app/gateway >/dev/null
-COMPOSE=(docker compose --project-directory app -f app/docker-compose.yml)
 "${COMPOSE[@]}" pull -q nginx mongodb
 "${COMPOSE[@]}" up -d --remove-orphans
 

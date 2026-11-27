@@ -9,7 +9,8 @@ services:
     image: docker.io/library/nginx:1.27-alpine
     ports: ["8088:80"]
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.local.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/suki-app.conf:/etc/nginx/suki-app.conf:ro
       - ./branding:/branding:ro
     depends_on: [api]
 

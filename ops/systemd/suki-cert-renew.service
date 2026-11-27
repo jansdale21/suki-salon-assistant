@@ -1,0 +1,9 @@
+[Unit]
+Description=Suki HTTPS certificate renewal (Let's Encrypt)
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/suki.env
+ExecStart=/bin/bash /opt/suki/ops/tls/renew-cert.sh

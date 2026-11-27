@@ -41,7 +41,7 @@ systemctl restart docker
 # 4. Scheduled automations (systemd timers run with nobody touching them).
 install -m 0644 ops/systemd/*.service ops/systemd/*.timer /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now suki-backup.timer suki-eval.timer
+systemctl enable --now suki-backup.timer suki-eval.timer suki-cert-renew.timer
 
 # 5. First deployment.
 bash "$SUKI_HOME/infra/scripts/deploy.sh"
