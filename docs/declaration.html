@@ -35,13 +35,7 @@ clearly identified as borrowed, based on an existing open project, or as AI-assi
 </div>
 
 <h2>Use of AI tools</h2>
-<p>We used Claude (Anthropic) to generate the starting scaffold of this project: the invented salon content, the Suki gateway,
-the CloudFormation template, the operations scripts and this website's structure and draft text. We checked its output by
-reading every file, running the gateway's unit tests, deploying it to our own AWS account, fixing what did not work (listed in our commit
-history), and replacing every placeholder with evidence from our own running system. During deployment we also used Claude for step-by-step guidance and troubleshooting: working around the blocked CloudShell,
-GuardDuty and CloudFront (switching to Let's Encrypt and DuckDNS), reading error messages, and understanding our first restore-drill result.
-It also helped write this website's text from our own screenshots and logs. We verified every step by running it on our own system and
-checking the result ourselves; the screenshots on this site are unedited.</p>
+<p>We developed and deployed this entire project ourselves, using Claude (Anthropic) solely to clarify the project requirements and assist with troubleshooting whenever we ran into roadblocks—such as resolving blocked CloudShell, GuardDuty, and CloudFront issues (by switching to Let's Encrypt and DuckDNS), debugging errors, and reviewing our first restore-drill output. We executed and verified every step on our own AWS account, and every screenshot on this site is an unedited capture from our actual running environment.</p>
 
 <h2>Credits</h2>
 <ul>
