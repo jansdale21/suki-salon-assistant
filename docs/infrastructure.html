@@ -23,8 +23,8 @@
 
 <h2>How a question travels</h2>
 <ol>
-  <li>The customer's browser sends the question over <strong>HTTPS</strong> to <strong>Amazon CloudFront</strong>, which provides the free <code>*.cloudfront.net</code> certificate.</li>
-  <li>CloudFront forwards it (no caching for chat traffic) to our <strong>EC2 instance</strong> on port 80. The security group accepts port 80 <em>only</em> from CloudFront's managed prefix list, so the server cannot be reached directly.</li>
+  <li>The customer's browser looks up <strong>suki-salon.duckdns.org</strong> (a free DuckDNS name that points to our Elastic IP; the server updates the record itself on every deploy).</li>
+  <li>The question goes over <strong>HTTPS</strong> straight to our <strong>EC2 instance</strong> on port 443. nginx holds a free <strong>Let's Encrypt</strong> certificate, renewed by a daily systemd timer. Port 80 only answers Let's Encrypt checks and redirects everything else to HTTPS; there is no SSH.</li>
   <li><strong>nginx</strong> serves Suki's branding, logs the request as JSON (status and time, no IP address), and passes it to <strong>LibreChat</strong>.</li>
   <li>LibreChat checks the login, saves the message in <strong>MongoDB</strong> and sends the conversation to the <strong>Suki gateway</strong>, a small service we wrote.</li>
   <li>The gateway removes phone numbers and e-mail addresses, adds the salon knowledge base (read from <strong>S3</strong>), and calls <strong>Google Gemini</strong> with a key read from <strong>Parameter Store</strong>. Gemini runs outside AWS. The answer streams back the same way, and the gateway writes one log line: question, time taken, success, model, knowledge version and app version.</li>
@@ -34,15 +34,15 @@
 <table>
   <tr><th>Service</th><th>What it does for Suki</th><th>Sizing / notes</th></tr>
   <tr><td>EC2 (t3.small, Amazon Linux 2023)</td><td>Runs Docker: nginx, LibreChat, MongoDB, Suki gateway; CloudWatch agent; backup and test timers</td><td>2 vCPU, 2 GiB RAM + 2 GiB swap, 20 GiB gp3 encrypted. Search/RAG containers removed to fit.</td></tr>
-  <tr><td>Elastic IP</td><td>Stable origin address for CloudFront</td><td>Billed like any public IPv4 address</td></tr>
-  <tr><td>CloudFront</td><td>HTTPS front door, caches static <code>/assets/*</code></td><td>Default certificate, PriceClass_200 (includes Asia)</td></tr>
+  <tr><td>Elastic IP</td><td>Stable public address; the DuckDNS name points here</td><td>Billed like any public IPv4 address</td></tr>
+  <tr><td>Let's Encrypt + DuckDNS (external, free)</td><td>HTTPS certificate on nginx and the public name <code>suki-salon.duckdns.org</code></td><td>Certificate checked daily by <code>suki-cert-renew.timer</code>; DuckDNS token in Parameter Store</td></tr>
   <tr><td>S3 (one versioned bucket)</td><td><code>content/</code> salon knowledge · <code>backups/</code> database dumps every 6 h (14-day lifecycle) · <code>eval/</code> test results</td><td>Encrypted, public access blocked, HTTPS-only policy</td></tr>
   <tr><td>SSM Parameter Store</td><td>All secrets as SecureString under <code>/suki/prod</code>; also the model name and public URL</td><td>Instance role can read only <code>/suki/prod*</code></td></tr>
   <tr><td>CloudWatch</td><td>Log groups (30–90 day retention), metric filters, 12 alarms, <em>Suki-Operations</em> dashboard</td><td>Custom metrics in the <code>Suki</code> and <code>CWAgent</code> namespaces</td></tr>
   <tr><td>SNS</td><td>E-mails every alarm, failed backup and test-run summary to our inbox</td><td></td></tr>
-  <tr><td>Lambda + EventBridge</td><td>Health check through CloudFront every 5 minutes</td><td>Python 3.12, 128 MB</td></tr>
+  <tr><td>Lambda + EventBridge</td><td>Health check of the public HTTPS URL every 5 minutes</td><td>Python 3.12, 128 MB</td></tr>
   <tr><td>Systems Manager Session Manager</td><td>Shell access without SSH keys or open port 22</td><td></td></tr>
-  <tr><td>CloudTrail, GuardDuty, AWS Budgets</td><td>Audit trail, threat detection, cost alerts</td><td>Trail logs kept 90 days</td></tr>
+  <tr><td>CloudTrail, AWS Budgets (GuardDuty in the template)</td><td>Audit trail, cost alerts; threat detection once AWS allows it</td><td>Trail logs kept 90 days. GuardDuty could not be enabled: the account was still under AWS verification.</td></tr>
   <tr><td>IAM</td><td>One user per student with MFA; instance role; GitHub OIDC deploy role</td><td>No long-lived access keys on the server or in GitHub</td></tr>
   <tr><td>Google Gemini (external)</td><td>The language model</td><td>Free tier, key in Parameter Store; model name changeable without redeploying</td></tr>
 </table>
@@ -51,12 +51,21 @@
 <p>The whole environment is one CloudFormation template, <code>infra/cloudformation/suki-stack.yaml</code>. It is deployed with
 <code>infra/scripts/deploy-stack.sh</code>, and the server configures itself on first boot from the repository. This means
 the system can be <em>rebuilt</em>, not just restored.</p>
-<div class="evidence-needed" data-id="E-18">After deploying, add a screenshot of the CloudFormation stack's Resources tab (or the output of <code>aws cloudformation describe-stack-resources</code>) under this paragraph, so the diagram is backed by the real account.</div>
+<figure><a href="evidence/E-18_stack-resources.jpg"><img src="evidence/E-18_stack-resources.jpg" alt="E-18 · CloudFormation stack "suki" Resources tab, 2026-11-27, all CREATE_COMPLETE." loading="lazy"></a><figcaption>E-18 · CloudFormation stack "suki" Resources tab, 2026-11-27, all CREATE_COMPLETE.</figcaption></figure>
 
 <h2>Diagram change history</h2>
 <table><tr><th>Date</th><th>Change</th></tr>
-<tr><td><span class="todo">YYYY-MM-DD</span></td><td>First version, before deployment</td></tr></table>
+<tr><td>2026-11-26</td><td>First version, before deployment (CloudFront in front of EC2)</td></tr>
+<tr><td>2026-11-27</td><td>CloudFront replaced by HTTPS on nginx (Let's Encrypt) and a DuckDNS name; GuardDuty marked pending</td></tr></table>
 
+<h2>What changed during deployment, and why</h2>
+<table><tr><th>Problem we hit</th><th>What we did</th></tr>
+<tr><td>CloudShell would not start: "account verification is in progress"</td><td>Ran the same scripts from GitHub Codespaces with the AWS CLI, signing in as our IAM user and switching to the SukiAdmin role with an MFA code.</td></tr>
+<tr><td>GuardDuty returned <code>SubscriptionRequiredException</code></td><td>The deploy script now skips GuardDuty when the account cannot use it yet; CloudTrail, MFA and least-privilege IAM still cover access and audit.</td></tr>
+<tr><td>CloudFormation failed: "Your account must be verified before you can add new CloudFront resources"</td><td>Moved HTTPS onto nginx with a free Let's Encrypt certificate and a DuckDNS name. We first tried sslip.io, but it is not on the Public Suffix List, so all its users share one Let's Encrypt limit; duckdns.org is on the list.</td></tr>
+<tr><td>Gemini returned 503 "high demand" for the newest flash models</td><td>Main model changed to <code>gemini-3.5-flash-lite</code>; the gateway now tries fallback models on 429/5xx (set in <code>/suki/prod/GEMINI_FALLBACK_MODELS</code>).</td></tr>
+</table>
+<figure><a href="evidence/P3_cloudshell-blocked.jpg"><img src="evidence/P3_cloudshell-blocked.jpg" alt="CloudShell blocked: "account verification is in progress", 2026-11-26." loading="lazy"></a><figcaption>CloudShell blocked: "account verification is in progress", 2026-11-26.</figcaption></figure><figure><a href="evidence/P3_cli-assumed-sukiadmin.jpg"><img src="evidence/P3_cli-assumed-sukiadmin.jpg" alt="Workaround: AWS CLI in GitHub Codespaces, switched into the SukiAdmin role with an MFA code." loading="lazy"></a><figcaption>Workaround: AWS CLI in GitHub Codespaces, switched into the SukiAdmin role with an MFA code.</figcaption></figure><figure><a href="evidence/P3_cloudfront-blocked.jpg"><img src="evidence/P3_cloudfront-blocked.jpg" alt="First deploy failed: CloudFront "Your account must be verified", 2026-11-27 03:21 PHT; everything else was cancelled and rolled back." loading="lazy"></a><figcaption>First deploy failed: CloudFront "Your account must be verified", 2026-11-27 03:21 PHT; everything else was cancelled and rolled back.</figcaption></figure><figure><a href="evidence/P3_duckdns-domain.jpg"><img src="evidence/P3_duckdns-domain.jpg" alt="DuckDNS name suki-salon.duckdns.org created (token hidden)." loading="lazy"></a><figcaption>DuckDNS name suki-salon.duckdns.org created (token hidden).</figcaption></figure><figure><a href="evidence/P3_stack-outputs.jpg"><img src="evidence/P3_stack-outputs.jpg" alt="Second deploy succeeded, 2026-11-27 ~09:58 PHT: stack outputs with PublicUrl https://suki-salon.duckdns.org." loading="lazy"></a><figcaption>Second deploy succeeded, 2026-11-27 ~09:58 PHT: stack outputs with PublicUrl https://suki-salon.duckdns.org.</figcaption></figure><figure><a href="evidence/P3_server-install-done.jpg"><img src="evidence/P3_server-install-done.jpg" alt="Server bootstrap log in CloudWatch: Let's Encrypt certificate issued (tls_issued) and all four containers started, 10:00–10:01 PHT." loading="lazy"></a><figcaption>Server bootstrap log in CloudWatch: Let's Encrypt certificate issued (tls_issued) and all four containers started, 10:00–10:01 PHT.</figcaption></figure>
 </main>
 <footer class="site">Suki — Suklay &amp; Kulay salon assistant · SAM10 Systems Administration and Maintenance final project ·
 Jansdale S. Yusi &amp; Rhea Angeline G. Manipon · Built on <a href="https://github.com/danny-avila/LibreChat">LibreChat</a> (MIT) ·

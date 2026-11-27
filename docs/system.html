@@ -19,10 +19,10 @@
 
 <h2>Reskin: before and after</h2>
 <div class="grid">
-  <div class="evidence-needed" data-id="E-05">Screenshot of the ORIGINAL LibreChat (stock local install, default branding) with a question on screen.</div>
-  <div class="evidence-needed" data-id="E-01">Screenshot of SUKI (deployed URL visible) answering a realistic salon question.</div>
+  <figure><a href="evidence/E-05_original-librechat.jpg"><img src="evidence/E-05_original-librechat.jpg" alt="E-05 · Original LibreChat running locally (stock branding), 2026-11-26, GitHub Codespaces." loading="lazy"></a><figcaption>E-05 · Original LibreChat running locally (stock branding), 2026-11-26, GitHub Codespaces.</figcaption></figure><figure><a href="evidence/P1_suki-local-answer.jpg"><img src="evidence/P1_suki-local-answer.jpg" alt="Suki running locally after the reskin, answering from the knowledge base, 2026-11-26." loading="lazy"></a><figcaption>Suki running locally after the reskin, answering from the knowledge base, 2026-11-26.</figcaption></figure>
+  <figure><a href="evidence/E-01_live-answer.jpg"><img src="evidence/E-01_live-answer.jpg" alt="E-01 · Suki on the deployed URL https://suki-salon.duckdns.org answering a price question in Taglish (₱350 women's haircut, from the S3 knowledge base), 2026-11-27 11:08 PHT." loading="lazy"></a><figcaption>E-01 · Suki on the deployed URL https://suki-salon.duckdns.org answering a price question in Taglish (₱350 women's haircut, from the S3 knowledge base), 2026-11-27 11:08 PHT.</figcaption></figure>
 </div>
-<div class="evidence-needed" data-id="E-02">Deployed URL: paste the CloudFront URL here and in the summary page.</div>
+<p><strong>Deployed URL:</strong> <a href="https://suki-salon.duckdns.org">https://suki-salon.duckdns.org</a></p>
 
 <h2 id="card">SYSTEM CARD: Suki — Suklay &amp; Kulay salon assistant</h2>
 
@@ -38,7 +38,7 @@ promos and aftercare tips. It replies in English, Filipino or Taglish. It only g
 
 <h3>3. Base system</h3>
 <ul>
-  <li><strong>Name and version:</strong> LibreChat <span class="todo">v0.8.9 (confirm the image tag in /var/log/suki/deploy.log)</span></li>
+  <li><strong>Name and version:</strong> LibreChat v0.8.9 (image <code>registry.librechat.ai/librechat-ai/librechat:v0.8.9</code>, from the deploy log)</li>
   <li><strong>Source URL:</strong> <a href="https://github.com/danny-avila/LibreChat">https://github.com/danny-avila/LibreChat</a></li>
   <li><strong>Author:</strong> Danny Avila and the LibreChat contributors</li>
   <li><strong>Licence:</strong> MIT (<a href="https://github.com/danny-avila/LibreChat/blob/main/LICENSE">LICENSE</a>). The MIT licence allows modification and rebranding provided the copyright and licence notice are kept; we keep it in <code>NOTICE.md</code> in our repository.</li>
@@ -51,33 +51,33 @@ promos and aftercare tips. It replies in English, Filipino or Taglish. It only g
   <tr><td>Name/branding</td><td>"LibreChat" title, logo, purple/grey theme, mascot</td><td>"Suki · Suklay &amp; Kulay", new logo and favicons (a smiling salon assistant with flowing hair and a headset), plum/rose/cream theme, mascot removed, custom footer</td><td>A stranger should not recognise LibreChat</td></tr>
   <tr><td>Data/content</td><td>None: a general assistant</td><td>Our invented salon knowledge base: 9 Markdown files (hours, about 60 priced services, packages, policies, aftercare, FAQ) in S3</td><td>Answers must come from the salon's own information</td></tr>
   <tr><td>Wording/prompts</td><td>Generic welcome, no system prompt</td><td>Suki persona and rules (answer only from the knowledge base, no medical advice, no personal data, cannot book); salon welcome text, bilingual conversation starters, terms modal</td><td>Domain language; responsible use</td></tr>
-  <tr><td>Interface</td><td>Model picker, presets, agents, prompts, file search, web search, code runner</td><td>One fixed assistant ("Suki · Salon Assistant"); everything else switched off; registration closed</td><td>Simpler for customers; less to secure</td></tr>
-  <tr><td>AWS services</td><td>None (runs anywhere)</td><td>S3 knowledge base read at runtime; Parameter Store secrets; CloudWatch logs/metrics; SNS alerts; CloudFront; Lambda</td><td>At least one real AWS integration beyond hosting</td></tr>
+  <tr><td>Interface</td><td>Model picker, presets, agents, prompts, file search, web search, code runner</td><td>One fixed assistant ("Suki · Salon Assistant"); everything else switched off; open sign-up with rate limits</td><td>Simpler for customers; less to secure</td></tr>
+  <tr><td>AWS services</td><td>None (runs anywhere)</td><td>S3 knowledge base read at runtime; Parameter Store secrets; CloudWatch logs/metrics; SNS alerts; Lambda</td><td>At least one real AWS integration beyond hosting</td></tr>
   <tr><td>New component</td><td>—</td><td>"Suki gateway" (Python, about 400 lines with comments): knowledge injection, PII redaction, per-request logging, model routing</td><td>Privacy, observability, and changing content without a redeploy</td></tr>
 </table>
 
 <h3>5. Data</h3>
 <ul>
   <li><strong>Where it came from:</strong> written by us for this project (<code>content/*.md</code> in the repository). The business, address, staff first names, prices and policies are all invented.</li>
-  <li><strong>Size and format:</strong> 9 Markdown files, about <span class="todo">__ KB</span> (see the gateway's <code>knowledge_loaded</code> log line).</li>
+  <li><strong>Size and format:</strong> 9 Markdown files, about 17 KB (see the gateway's <code>knowledge_loaded</code> log line).</li>
   <li><strong>Anything personal in it:</strong> no — all invented. Test accounts use invented names and <code>@example.com</code> addresses.</li>
   <li><strong>Anything sent to a third-party AI service:</strong> the knowledge base (invented), the customer's question and the conversation so far. Phone numbers and e-mail addresses are replaced with <code>[phone removed]</code> / <code>[email removed]</code> by the gateway <em>before</em> leaving AWS, and the count is logged (metric <code>Suki/PiiRedacted</code>). We only ever typed invented data.</li>
 </ul>
 
 <h3>6. How good it is</h3>
 <ul>
-  <li><strong>The one number:</strong> <span class="todo">__ of 32 labelled test questions answered correctly (__%) on YYYY-MM-DD</span></li>
+  <li><strong>The one number:</strong> 32 of 32 labelled test questions answered correctly (100%) on 2026-11-27 11:12 PHT, model gemini-3.5-flash-lite, median answer time 1.7 s</li>
   <li><strong>How we measured it:</strong> <code>ops/eval/run_eval.py</code> sends each question in <code>ops/eval/questions.json</code> through the deployed gateway and checks the answer against required keywords (e.g. the right price) and forbidden phrases. It runs every 12 hours and e-mails the pass rate.</li>
   <li><strong>Test cases:</strong> 32 across 8 categories: prices (8), hours (4), policies (6), services (4), Filipino/Taglish (2), safety and refusals (3), out of scope (3), arithmetic (2).</li>
-  <li><strong>An example it gets wrong:</strong> <span class="todo">copy a real failure from the eval output, e.g. the arithmetic or "not offered" questions</span></li>
+  <li><strong>An example it gets wrong:</strong> asked "Magkano kung haircut at manicure ang sabay kong ipapagawa?" (how much for a haircut and manicure together), Suki listed both prices (₱350/₱200 haircut, ₱180/₱550 manicure) but never added them up into a total. The keyword-based test set did not catch this, which is why we also check answers by hand (see <a href="results.html">Results</a>).</li>
   <li><strong>Limits of the measurement:</strong> keyword rules can pass a muddled answer that contains the right number, or fail a correct answer worded unexpectedly; 32 questions is a small sample.</li>
 </ul>
 
 <h3>7. How it is served</h3>
 <ul>
-  <li><strong>Where it runs:</strong> EC2 t3.small, Amazon Linux 2023, ap-southeast-1, Docker Compose; HTTPS via CloudFront.</li>
-  <li><strong>What calls it:</strong> browsers at the CloudFront URL; LibreChat calls the gateway at <code>http://gateway:8080/v1/chat/completions</code> (internal only).</li>
-  <li><strong>The model behind it:</strong> Google <span class="todo">gemini-3.8-flash</span> through the Gemini API free tier (OpenAI-compatible endpoint), using a key from our own Google AI Studio account. The free tier has per-minute and per-day request limits, and Google's terms for the free tier allow it to use prompts to improve its products, which is one more reason we only send invented data.</li>
+  <li><strong>Where it runs:</strong> EC2 t3.small, Amazon Linux 2023, ap-southeast-1, Docker Compose; HTTPS on nginx with a Let's Encrypt certificate, at suki-salon.duckdns.org.</li>
+  <li><strong>What calls it:</strong> browsers at https://suki-salon.duckdns.org; LibreChat calls the gateway at <code>http://gateway:8080/v1/chat/completions</code> (internal only).</li>
+  <li><strong>The model behind it:</strong> Google <code>gemini-3.5-flash-lite</code> (fallbacks: gemini-3-flash-preview, gemini-flash-lite-latest, gemini-3.7-flash) through the Gemini API free tier (OpenAI-compatible endpoint), using a key from our own Google AI Studio account. The free tier has per-minute and per-day request limits, and Google's terms for the free tier allow it to use prompts to improve its products, which is one more reason we only send invented data.</li>
   <li><strong>If the model or service is unavailable:</strong> the user sees an error message in the chat; the gateway logs <code>success:false</code> with the HTTP status (e.g. 429 quota); the <code>suki-answers-failed-rate</code> and <code>suki-model-rate-limited</code> alarms e-mail us. If the knowledge base cannot be read, the gateway refuses to answer rather than guess.</li>
 </ul>
 
@@ -91,7 +91,7 @@ promos and aftercare tips. It replies in English, Filipino or Taglish. It only g
 
 <h3>9. Operational summary</h3>
 <ul>
-  <li><strong>Where the code lives:</strong> <span class="todo">GitHub repository URL</span></li>
+  <li><strong>Where the code lives:</strong> <a href="https://github.com/jansdale21/suki-salon-assistant">https://github.com/jansdale21/suki-salon-assistant</a></li>
   <li><strong>How often it is backed up:</strong> database every 6 hours to S3 (kept 14 days); content versioned in S3 and in Git; secrets in Parameter Store; infrastructure in CloudFormation.</li>
   <li><strong>How we know it is healthy:</strong> 12 CloudWatch alarms (see <a href="operations.html">Monitoring</a>) and a 5-minute external health check.</li>
   <li><strong>Who to contact:</strong> Jansdale S. Yusi and Rhea Angeline G. Manipon (the alarm e-mail list).</li>

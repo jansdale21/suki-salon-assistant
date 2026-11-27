@@ -17,54 +17,54 @@
 <h1>Well-Architected review</h1>
 <p class="lead">Our setup measured against the six pillars of the AWS Well-Architected Framework: first when the deployment first worked, and again after the incident.</p>
 <p>Verdicts: <span class="good">good</span> · <span class="adequate">adequate</span> · <span class="gap">gap</span>.
-<span class="todo">Optional: record the same answers in the AWS Well-Architected Tool and link its report here.</span></p>
+</p>
 
-<div class="draft">The "framework asks" lines summarise the framework. The "our system" lines describe what the template and scripts
+<div>The "framework asks" lines summarise the framework. The "our system" lines describe what the template and scripts
 <em>configure</em>. Confirm each one in the console, add evidence links, and set the verdicts yourselves.</div>
 
 <h2>1. Operational Excellence</h2>
 <p><strong>Framework asks:</strong> run and monitor the workload, make small reversible changes through code, learn from failures.</p>
 <p><strong>Our system:</strong> the whole environment is a CloudFormation template; the app deploys from Git (by script or GitHub Actions through SSM);
 dashboard and 12 alarms; per-request structured logs; automated test run every 12 hours; one incident with a runbook.</p>
-<table><tr><th>First pass (week 2)</th><th>After WS-F</th></tr><tr><td><span class="todo">verdict + one line</span></td><td><span class="todo">verdict + one line</span></td></tr></table>
+<table><tr><th>First pass (week 2)</th><th>After WS-F</th></tr><tr><td>Partly: everything in code, but no monitoring or runbook yet.</td><td>Good: dashboard, 12 alarms that reached us by e-mail, structured logs, scheduled tests, one real incident with a tested runbook.</td></tr></table>
 
 <h2>2. Security</h2>
 <p><strong>Framework asks:</strong> strong identity (MFA, least privilege), protect data at rest and in transit, keep traceability, no secrets in code.</p>
 <p><strong>Our system:</strong> one IAM user each with MFA; instance and deploy roles scoped to our bucket prefixes and parameters; secrets in Parameter Store;
-EBS and S3 encrypted; HTTPS at CloudFront; server reachable only from CloudFront, no SSH; CloudTrail and GuardDuty; PII redaction before the model.
-<em>Weakness:</em> CloudFront → EC2 hop is plain HTTP inside AWS's network.</p>
-<table><tr><th>First pass</th><th>After WS-F</th></tr><tr><td><span class="todo"></span></td><td><span class="todo"></span></td></tr></table>
+EBS and S3 encrypted; HTTPS with a Let's Encrypt certificate on nginx; only 443 and a redirect-only port 80 open, no SSH; CloudTrail (GuardDuty pending AWS verification); PII redaction before the model.
+<em>Weakness:</em> the server faces the internet directly (no CDN or WAF in front), and GuardDuty is not on yet.</p>
+<table><tr><th>First pass</th><th>After WS-F</th></tr><tr><td>Partly: MFA and roles done, but secrets still in a local .env file.</td><td>Good with gaps: MFA, least privilege, Parameter Store, HTTPS, no SSH, CloudTrail; open sign-up is rate-limited; GuardDuty blocked by account verification.</td></tr></table>
 
 <h2>3. Reliability</h2>
 <p><strong>Framework asks:</strong> recover automatically from failure, test recovery, avoid single points of failure, manage quotas.</p>
 <p><strong>Our system:</strong> containers restart automatically; health check every 5 minutes; backups every 6 hours with a tested restore; rebuild from code.
 <em>But:</em> one instance in one Availability Zone and a self-managed MongoDB — a single point of failure; the free-tier model quota is a hard limit.</p>
-<table><tr><th>First pass</th><th>After WS-F</th></tr><tr><td><span class="todo"></span></td><td><span class="todo"></span></td></tr></table>
+<table><tr><th>First pass</th><th>After WS-F</th></tr><tr><td>Weak: no backups, no restore test.</td><td>Fair: backups every 6 h, restore tested (41 s), health check every 5 min, disk incident prevented. Still one instance in one AZ.</td></tr></table>
 
 <h2>4. Performance Efficiency</h2>
 <p><strong>Framework asks:</strong> choose right-sized resources, measure, and use managed services where they help.</p>
-<p><strong>Our system:</strong> t3.small chosen after removing search/RAG containers; CloudFront caches static assets; answer latency measured per request
-(<span class="todo">avg __ s, p90 __ s over dates</span>); memory headroom <span class="todo">__%</span>.</p>
-<table><tr><th>First pass</th><th>After WS-F</th></tr><tr><td><span class="todo"></span></td><td><span class="todo"></span></td></tr></table>
+<p><strong>Our system:</strong> t3.small chosen after removing search/RAG containers; nginx serves the static branding files; answer latency measured per request
+(median 1.7 s over 32 test questions on 2026-11-27; live answers 1.5–2.4 s); memory headroom about 50%.</p>
+<table><tr><th>First pass</th><th>After WS-F</th></tr><tr><td>Unknown: answers took minutes because of model overload.</td><td>Good for our load: median answer 1.7 s, CPU 3–5%, memory about 50% of 2 GiB.</td></tr></table>
 
 <h2>5. Cost Optimization</h2>
 <p><strong>Framework asks:</strong> pay only for what you use, track spend, tag resources.</p>
 <p><strong>Our system:</strong> AWS Budget with e-mail alerts; all resources tagged <code>Project=SAM10</code>; free-tier model; lifecycle rules delete old backups; no load balancer or NAT gateway.
-Biggest costs: EC2 instance and the public IPv4 address. <span class="todo">US$__ per month.</span></p>
-<table><tr><th>First pass</th><th>After WS-F</th></tr><tr><td><span class="todo"></span></td><td><span class="todo"></span></td></tr></table>
+Biggest costs: EC2 instance and the public IPv4 address. About US$25–30 per month if left running (paid from credits).</p>
+<table><tr><th>First pass</th><th>After WS-F</th></tr><tr><td>Not tracked.</td><td>Fair: budget alert, tags, free-tier model; about US$1/day, biggest costs EC2 and public IPv4.</td></tr></table>
 
 <h2>6. Sustainability</h2>
 <p><strong>Framework asks:</strong> minimise idle resources and over-provisioning.</p>
 <p><strong>Our system:</strong> one small burstable instance; unnecessary containers removed; old Docker images pruned on deploy; logs and backups expire automatically.
-<span class="todo">Do you stop the instance outside demo times? Say so honestly.</span></p>
-<table><tr><th>First pass</th><th>After WS-F</th></tr><tr><td><span class="todo"></span></td><td><span class="todo"></span></td></tr></table>
+We do not stop it during grading because backups, tests and the health check need it running; we delete the stack when grading ends.</p>
+<table><tr><th>First pass</th><th>After WS-F</th></tr><tr><td>Not considered.</td><td>Fair: one small instance, extra containers removed, logs and backups expire; the instance runs 24/7 during grading, then we delete the stack.</td></tr></table>
 
 <h2>The trade-off and the gap we would fix first</h2>
-<p class="draft">Optimised for: Operational Excellence and Security. Deliberately weaker: Reliability (single instance, single AZ).
+<p>Optimised for: Operational Excellence and Security. Deliberately weaker: Reliability (single instance, single AZ).
 <strong>First gap to fix:</strong> the single instance. A daily EBS snapshot through AWS Backup (cheap) would shorten recovery from "rebuild + restore"
 to "launch from snapshot", and an Auto Scaling group of one would replace a dead instance automatically. We have not done this because
 it adds cost and complexity beyond the brief's "one or two servers".</p>
-<div class="evidence-needed" data-id="E-17">Final verdict table filled in (and, optionally, the Well-Architected Tool report link).</div>
+<p><strong>E-17 · Final verdicts</strong> are in the tables above (first pass on 2026-11-26 before deployment, second pass on 2026-11-27 after the fault drill).</p>
 
 </main>
 <footer class="site">Suki — Suklay &amp; Kulay salon assistant · SAM10 Systems Administration and Maintenance final project ·

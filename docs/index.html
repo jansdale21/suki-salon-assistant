@@ -48,10 +48,10 @@ no password, its secret keys sat in a plain text file, and nothing was backed up
 <h2>What we changed</h2>
 <ul>
   <li><strong>Made it ours:</strong> new name, logo, colours and wording; our own invented salon knowledge base; salon terminology throughout.</li>
-  <li><strong>Put it on AWS:</strong> one small EC2 server behind CloudFront for HTTPS, with the salon content in S3 and every key in Parameter Store.</li>
+  <li><strong>Put it on AWS:</strong> one small EC2 server with HTTPS (free Let's Encrypt certificate), with the salon content in S3 and every key in Parameter Store.</li>
   <li><strong>Made it observable:</strong> a CloudWatch dashboard, 12 alarms that e-mail us, and a log line for every question with its response time and outcome.</li>
   <li><strong>Made it recoverable:</strong> database backups every 6 hours to versioned S3, and a restore that we actually tested.</li>
-  <li><strong>Locked it down:</strong> MFA and one IAM user each, no SSH, the server reachable only through CloudFront, phone numbers and e-mails removed before anything reaches the AI provider, CloudTrail and GuardDuty on.</li>
+  <li><strong>Locked it down:</strong> MFA and one IAM user each, no SSH, only HTTPS open to the internet (port 80 just redirects), phone numbers and e-mails removed before anything reaches the AI provider, CloudTrail and GuardDuty on.</li>
   <li><strong>Automated the chores:</strong> a health check every 5 minutes, a backup every 6 hours and a test-question run every 12 hours, all running unattended.</li>
   <li><strong>Practised failure:</strong> we broke it on purpose (a full disk), found the root cause, fixed it, prevented it, and wrote a runbook.</li>
 </ul>
@@ -59,24 +59,24 @@ no password, its secret keys sat in a plain text file, and nothing was backed up
 <h2>What improved</h2>
 <table>
   <tr><th>Measure</th><th>Before (dates)</th><th>After (dates)</th></tr>
-  <tr><td>Answer quality (test questions passed)</td><td><span class="todo">__ / 32 (date range)</span></td><td><span class="todo">__ / 32 (date range)</span></td></tr>
-  <tr><td>Time to detect a failure</td><td>never (nobody was told)</td><td><span class="todo">__ min (incident on __)</span></td></tr>
-  <tr><td>Data that could be lost</td><td>everything</td><td><span class="todo">at most 6 h of chats (RPO)</span></td></tr>
-  <tr><td>Time to recover the database</td><td>not possible</td><td><span class="todo">__ min, measured in the restore drill</span></td></tr>
-  <tr><td>Monthly cost</td><td><span class="todo">US$__</span></td><td><span class="todo">US$__</span></td></tr>
+  <tr><td>Answer quality (test questions passed)</td><td>not measured (stock app has no salon knowledge; 2026-11-26)</td><td>32 / 32 (2026-11-27)</td></tr>
+  <tr><td>Time to detect a failure</td><td>never (nobody was told)</td><td>7 min 41 s (disk-full incident, 2026-11-27)</td></tr>
+  <tr><td>Data that could be lost</td><td>everything</td><td>at most 6 h of chats (RPO)</td></tr>
+  <tr><td>Time to recover the database</td><td>not possible</td><td>41 seconds, measured in the restore drill (2026-11-27)</td></tr>
+  <tr><td>Monthly cost</td><td>US$0 (local)</td><td>about US$25–30 if left running, paid from AWS credits; AI ₱0</td></tr>
 </table>
 <p>All numbers, date ranges and graphs are on the <a href="results.html">Results page</a>.</p>
 
 <h2>Trade-off we chose</h2>
-<p class="draft">We optimised for <strong>Operational Excellence</strong> and <strong>Security</strong>: everything is defined in code,
+<p>We optimised for <strong>Operational Excellence</strong> and <strong>Security</strong>: everything is defined in code,
 monitored, alerted and audited. We deliberately accepted weaker <strong>Reliability</strong>: one server in one Availability Zone,
 so a server failure means minutes of downtime while we rebuild from code and backups. For a free information assistant for one
 small salon, that is cheaper and simpler than running two of everything. Details on the <a href="well-architected.html">Well-Architected review</a>.</p>
 
 <h2>Links</h2>
 <ul>
-  <li>Live system: <span class="todo">https://dxxxxxxxx.cloudfront.net</span> (test accounts on request; registration is closed)</li>
-  <li>Repository: <span class="todo">https://github.com/YOUR-USER/suki-salon-assistant</span></li>
+  <li>Live system: <a href="https://suki-salon.duckdns.org">https://suki-salon.duckdns.org</a> (sign up with any e-mail; per-user and per-IP rate limits protect the free model quota)</li>
+  <li>Repository: <a href="https://github.com/jansdale21/suki-salon-assistant">https://github.com/jansdale21/suki-salon-assistant</a></li>
 </ul>
 
 <h2>Team</h2>

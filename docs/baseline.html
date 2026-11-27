@@ -18,9 +18,9 @@
 <p class="lead">What stock LibreChat looks like when you follow its quick start, and what that would mean in production.</p>
 
 <h2>How we ran the baseline</h2>
-<p><span class="todo">Date, machine (laptop OS, RAM), LibreChat version/commit.</span> We cloned the upstream repository and ran its
+<p>2026-11-26, GitHub Codespaces (Linux, 4 cores, 7.8 GiB RAM; Docker Desktop would not start on our Windows laptop because virtualisation was disabled), LibreChat <code>librechat-dev:latest</code> from the upstream repository. We cloned the upstream repository and ran its
 default <code>docker compose up</code> with the example <code>.env</code>, then connected a Gemini key.</p>
-<div class="evidence-needed" data-id="E-05">Screenshot of stock LibreChat running locally (same image as on the System page is fine) plus <code>docker compose ps</code> output.</div>
+<figure><a href="evidence/E-05_original-librechat.jpg"><img src="evidence/E-05_original-librechat.jpg" alt="E-05 · Stock LibreChat running locally, 2026-11-26." loading="lazy"></a><figcaption>E-05 · Stock LibreChat running locally, 2026-11-26.</figcaption></figure><figure><a href="evidence/BASE_docker-stats.jpg"><img src="evidence/BASE_docker-stats.jpg" alt="Stock stack: docker compose ps and docker stats --no-stream, 2026-11-26 18:30 PHT (6 containers; admin-panel was crash-looping)." loading="lazy"></a><figcaption>Stock stack: docker compose ps and docker stats --no-stream, 2026-11-26 18:30 PHT (6 containers; admin-panel was crash-looping).</figcaption></figure>
 
 <h2>What we found (from the upstream docker-compose.yml and .env.example)</h2>
 <table>
@@ -39,9 +39,9 @@ default <code>docker compose up</code> with the example <code>.env</code>, then 
 <p>Measured the same way as the "after" numbers on the <a href="results.html">Results page</a>.</p>
 <table>
   <tr><th>Measure</th><th>Value</th><th>How / when</th></tr>
-  <tr><td>Memory used by the stock stack</td><td><span class="todo">__ MiB</span></td><td><code>docker stats --no-stream</code>, date</td></tr>
-  <tr><td>Containers running</td><td><span class="todo">__</span></td><td><code>docker compose ps</code></td></tr>
-  <tr><td>Answer quality on our 32 questions (stock prompt, no knowledge base)</td><td><span class="todo">__ / 32</span></td><td>run_eval.py against stock config, date</td></tr>
+  <tr><td>Memory used by the stock stack</td><td>about 1,037 MiB</td><td><code>docker stats --no-stream</code>, 2026-11-26 18:30 PHT</td></tr>
+  <tr><td>Containers running</td><td>6 (one of them restarting)</td><td><code>docker compose ps</code>, 2026-11-26</td></tr>
+  <tr><td>Answer quality on our 32 questions (stock prompt, no knowledge base)</td><td>not measured</td><td>The stock app has no salon knowledge, so it cannot answer the price/hours/policy questions at all; we did not spend free-tier quota proving that.</td></tr>
   <tr><td>Backups / alarms / audit trail</td><td>0 / 0 / none</td><td>inspection</td></tr>
 </table>
 

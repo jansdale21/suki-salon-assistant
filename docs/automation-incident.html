@@ -19,7 +19,7 @@
 <h2>Automations (WS-E)</h2>
 <table>
   <tr><th>#</th><th>Automation</th><th>Trigger</th><th>What it does</th><th>Code</th></tr>
-  <tr><td>1</td><td>Health check</td><td>EventBridge, every 5 min</td><td>Calls <code>/health</code> through CloudFront, publishes <code>Suki/HealthCheckOK</code>; alarm after two failures</td><td><code>infra/cloudformation/suki-stack.yaml</code> (HealthCheckFunction)</td></tr>
+  <tr><td>1</td><td>Health check</td><td>EventBridge, every 5 min</td><td>Calls <code>/health</code> on the public HTTPS URL, publishes <code>Suki/HealthCheckOK</code>; alarm after two failures</td><td><code>infra/cloudformation/suki-stack.yaml</code> (HealthCheckFunction)</td></tr>
   <tr><td>2</td><td>Scheduled backup</td><td>systemd timer, every 6 h (00/06/12/18 PHT)</td><td>MongoDB dump + manifest + config tarball to S3; metric; e-mail on failure</td><td><code>ops/backup/backup.sh</code></td></tr>
   <tr><td>3</td><td>Scheduled test run</td><td>systemd timer, 03:00 and 15:00 PHT</td><td>32 test questions through the gateway; pass rate to CloudWatch, S3 and e-mail</td><td><code>ops/eval/run_eval.py</code></td></tr>
   <tr><td>4 (S)</td><td>Deploy on push</td><td>GitHub Actions on <code>main</code></td><td>Tests, uploads content to S3, redeploys through SSM Run Command (OIDC, no keys)</td><td><code>.github/workflows/deploy.yml</code></td></tr>
@@ -27,14 +27,13 @@
 <h3>Proof they ran unattended (at least twice each)</h3>
 <table>
   <tr><th>Automation</th><th>Run 1 (timestamp)</th><th>Run 2 (timestamp)</th><th>Where the log line is</th></tr>
-  <tr><td>Health check</td><td><span class="todo"></span></td><td><span class="todo"></span></td><td><code>/aws/lambda/suki-healthcheck</code></td></tr>
-  <tr><td>Scheduled backup</td><td><span class="todo"></span></td><td><span class="todo"></span></td><td><code>/suki/automation</code> stream <code>…-backup</code></td></tr>
-  <tr><td>Scheduled test run</td><td><span class="todo"></span></td><td><span class="todo"></span></td><td><code>/suki/automation</code> stream <code>…-eval</code> + e-mail</td></tr>
+  <tr><td>Health check</td><td>2026-11-27 13:12:01 PHT</td><td>13:17:01 PHT (then every 5 min, 12 runs to 14:07)</td><td><code>/aws/lambda/suki-healthcheck</code></td></tr>
+  <tr><td>Scheduled backup</td><td>2026-11-27 12:01 PHT (timer)</td><td>next run 18:00 PHT, after our deadline; manual runs at 10:25 and 11:42 PHT use the same service</td><td><code>/suki/automation</code> stream <code>…-backup</code></td></tr>
+  <tr><td>Scheduled test run</td><td>2026-11-27 11:12 PHT (manual start of the same service)</td><td>15:00 PHT (timer)</td><td><code>/suki/automation</code> stream <code>…-eval</code> + e-mail</td></tr>
 </table>
-<div class="evidence-needed" data-id="E-14">Screenshots or pasted log lines with timestamps for at least two unattended runs of each automation (e.g. <code>systemctl list-timers</code> plus the backup.log lines, Lambda log lines).</div>
+<figure><a href="evidence/E-14_healthcheck-runs.jpg"><img src="evidence/E-14_healthcheck-runs.jpg" alt="E-14 · /aws/lambda/suki-healthcheck: 12 unattended runs every 5 minutes, 05:12–06:07 UTC (13:12–14:07 PHT), all status 200." loading="lazy"></a><figcaption>E-14 · /aws/lambda/suki-healthcheck: 12 unattended runs every 5 minutes, 05:12–06:07 UTC (13:12–14:07 PHT), all status 200.</figcaption></figure><figure><a href="evidence/E-10_backup-and-timers.jpg"><img src="evidence/E-10_backup-and-timers.jpg" alt="systemd timers on the server: suki-backup, suki-eval, suki-cert-renew." loading="lazy"></a><figcaption>systemd timers on the server: suki-backup, suki-eval, suki-cert-renew.</figcaption></figure>
 
 <h2 id="incident">Incident: the disk filled up (WS-F)</h2>
-<p class="todo">Write this section only from what actually happened when you ran the fault. Delete these guide notes when done.</p>
 <p><em>How the fault was created:</em> <code>sudo ops/fault/inject-disk-fault.sh</code> starts a background process that writes debug log lines to
 <code>/var/log/suki/noisy-debug.log</code> until the root disk reaches 97%, the kind of thing that happens when debug logging is left on.
 We then investigated it as if we did not know the cause.</p>
@@ -42,23 +41,33 @@ We then investigated it as if we did not know the cause.</p>
 <h3>Timeline</h3>
 <table>
   <tr><th>Event</th><th>Time (PHT)</th><th>Source</th></tr>
-  <tr><td>Fault started</td><td><span class="todo"></span></td><td><code>fault.log</code> fault_started</td></tr>
-  <tr><td>Alarm fired (<code>suki-ec2-disk-used-high</code>)</td><td><span class="todo"></span></td><td>alarm history / e-mail</td></tr>
-  <tr><td>We noticed and started investigating</td><td><span class="todo"></span></td><td></td></tr>
-  <tr><td>Fixed (service healthy, disk normal)</td><td><span class="todo"></span></td><td><code>fault.log</code> fault_resolved</td></tr>
-  <tr><td><strong>Time to detect</strong> (start → alarm)</td><td><span class="todo">__ min</span></td><td></td></tr>
-  <tr><td><strong>Time to fix</strong> (alarm → fixed)</td><td><span class="todo">__ min</span></td><td></td></tr>
+  <tr><td>Fault started</td><td>12:54:24 (disk 49%)</td><td><code>fault.log</code> fault_started</td></tr>
+  <tr><td>Alarm fired (<code>suki-ec2-disk-used-high</code>)</td><td>13:02:05 (e-mail at 13:02)</td><td>alarm history / e-mail</td></tr>
+  <tr><td>We noticed and started investigating</td><td>13:05:38</td><td></td></tr>
+  <tr><td>Fixed (service healthy, disk normal)</td><td>13:08:45 (disk 49%)</td><td><code>fault.log</code> fault_resolved</td></tr>
+  <tr><td><strong>Time to detect</strong> (start → alarm)</td><td>7 min 41 s</td><td>disk reached 98% at 12:59:09; alarm needs 2 × 5 min above 85%</td></tr>
+  <tr><td><strong>Time to fix</strong> (alarm → fixed)</td><td>6 min 40 s</td><td></td></tr>
 </table>
 <h3>Investigation</h3>
-<div class="evidence-needed" data-id="E-15">Paste the real commands and output: <code>df -h /</code>, <code>sudo du -xh / --max-depth=2 | sort -h | tail</code>, <code>sudo lsof +L1</code>, <code>docker compose logs --tail 50 mongodb</code>, what the app and alarms showed (answers failing? 5xx?).</div>
+<pre><code># 13:05:38 PHT
+$ df -h /
+/dev/nvme0n1p1   20G   19G  1.6G  93% /
+$ du -xh / --max-depth=2 | sort -h | tail -8
+...  4.6G /var/lib   8.8G /var/log   14G /var   19G /
+$ ls -lh /var/log/suki/
+-rw-r--r--. 1 root root 8.8G Nov 27 04:59 noisy-debug.log
+$ pgrep -af suki-noisy
+(nothing: the writer had already stopped itself at 98%)</code></pre>
+<p>What users saw: Suki kept answering (health checks stayed 200), because the disk stopped at 98% and MongoDB still had a little room. A few more minutes of logging would have filled the last 2%, at which point MongoDB cannot write and logins and new chats fail.</p><figure><a href="evidence/E-15a_fault-started.jpg"><img src="evidence/E-15a_fault-started.jpg" alt="Fault started, 12:54 PHT." loading="lazy"></a><figcaption>Fault started, 12:54 PHT.</figcaption></figure><figure><a href="evidence/E-15b_disk-alarm.jpg"><img src="evidence/E-15b_disk-alarm.jpg" alt="Alarm e-mail: datapoints 88.4% (04:52 UTC) and 97.2% (04:57 UTC) above 85%, ALARM at 05:02:05 UTC (13:02 PHT)." loading="lazy"></a><figcaption>Alarm e-mail: datapoints 88.4% (04:52 UTC) and 97.2% (04:57 UTC) above 85%, ALARM at 05:02:05 UTC (13:02 PHT).</figcaption></figure><figure><a href="evidence/E-15c_investigation.jpg"><img src="evidence/E-15c_investigation.jpg" alt="Investigation: /var/log is 8.8 GB, all of it noisy-debug.log." loading="lazy"></a><figcaption>Investigation: /var/log is 8.8 GB, all of it noisy-debug.log.</figcaption></figure>
 <h3>Root cause</h3>
-<p class="todo">A chain, not "we restarted it": e.g. "a process wrote unbounded debug logs into /var/log/suki; logrotate only ran once a day, so the 20 GB disk filled in N minutes; MongoDB could not write, so LibreChat returned errors and answers failed."</p>
+<p>A process with debug logging left on wrote unbounded log lines into <code>/var/log/suki/noisy-debug.log</code>. That folder sat on the same 20 GB root disk as MongoDB and Docker, and logrotate only runs once a day, so nothing stopped it: the disk went from 49% to 98% in under 5 minutes (12:54 → 12:59 PHT). Had it reached 100%, MongoDB could not write, so logins and new chats would have failed for every user.</p>
 <h3>Fix and prevention</h3>
-<p class="todo">The fix (what you removed or rotated) and the one change that stops it happening again (for example giving <code>/var/log/suki</code> its own capped 2 GiB volume with <code>ops/fault/prevention/isolate-log-volume.sh</code>), plus the evidence it worked: re-run the injector and show that only the log volume fills while the root disk stays below the alarm line.</p>
+<p><strong>Fix (13:08 PHT):</strong> confirmed the writer was gone (<code>pkill -f suki-noisy</code>), truncated the 8.8 GB file with <code>: &gt; /var/log/suki/noisy-debug.log</code> (truncate, not rm, in case a process still holds it open), checked <code>df -h /</code> was back to 49%, and recorded the time with <code>mark-resolved.sh</code>.</p>
+<p><strong>Prevention:</strong> <code>ops/fault/prevention/isolate-log-volume.sh</code> moved <code>/var/log/suki</code> onto its own 2 GiB volume. A runaway log can now fill only that volume, never the disk MongoDB needs. <strong>Proof:</strong> we ran the same fault again: <code>/var/log/suki</code> hit 100% (2.0G) while <code>/</code> stayed at 59%, far below the 85% alarm line, and no disk alarm fired. We then emptied the log volume.</p><figure><a href="evidence/E-15d_fixed.jpg"><img src="evidence/E-15d_fixed.jpg" alt="Fixed: disk back to 49%, fault_resolved logged at 05:08:45 UTC (13:08 PHT)." loading="lazy"></a><figcaption>Fixed: disk back to 49%, fault_resolved logged at 05:08:45 UTC (13:08 PHT).</figcaption></figure><figure><a href="evidence/E-15e_prevention-proof.jpg"><img src="evidence/E-15e_prevention-proof.jpg" alt="Prevention proof: the same fault fills only the 2 GiB log volume (100%); root disk stays at 59%." loading="lazy"></a><figcaption>Prevention proof: the same fault fills only the 2 GiB log volume (100%); root disk stays at 59%.</figcaption></figure>
 
 <h2 id="runbook">Runbook: root disk filling up</h2>
 <pre><code># RUNBOOK: Root disk above 85% on the Suki instance
-Owner: Suki ops (Yusi / Manipon)   Last tested: YYYY-MM-DD   Takes: ~15 min   Ask: the other teammate
+Owner: Suki ops (Yusi / Manipon)   Last tested: 2026-11-27   Takes: ~15 min   Ask: the other teammate
 
 1. WHAT THIS IS FOR
 Free up disk space on the Suki EC2 instance and stop it filling again.

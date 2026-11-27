@@ -16,13 +16,13 @@
 
 <h1>What we would do next</h1>
 <p class="lead">Realistic improvements, most important first.</p>
-<div class="draft">These follow from the gaps in our Well-Architected review. Reorder or replace them based on what you actually observed.</div>
+<div>These follow from the gaps in our Well-Architected review. Reorder or replace them based on what you actually observed.</div>
 <ol>
   <li><strong>Remove the single point of failure, cheaply.</strong> Daily EBS snapshots with AWS Backup and an Auto Scaling group of one instance, so a dead server is replaced automatically and recovery no longer depends on us. Improves Reliability; small extra cost.</li>
-  <li><strong>Protect the front door.</strong> AWS WAF rate-based rule on CloudFront and a secret origin header checked by nginx, so only <em>our</em> distribution can reach the server and floods cannot exhaust the model quota.</li>
+  <li><strong>Protect the front door.</strong> Once AWS verifies the account, put CloudFront + AWS WAF back in front and lock the security group to CloudFront again, so floods cannot exhaust the model quota.</li>
   <li><strong>Close the feedback loop.</strong> A weekly summary e-mail of thumbs-down answers and the most-asked questions without good answers, so the salon can fix its content. Uses data LibreChat already stores.</li>
   <li><strong>Better answers for numbers.</strong> Pre-computed discount prices in the knowledge base (or a small price-lookup tool), because arithmetic questions are where the model fails most.</li>
-  <li><strong>A real domain name.</strong> Route 53 + ACM certificate, so customers see a salon address instead of <code>cloudfront.net</code>.</li>
+  <li><strong>A real domain name.</strong> Route 53 + ACM certificate, so customers see a salon address instead of <code>duckdns.org</code>.</li>
 </ol>
 
 </main>
